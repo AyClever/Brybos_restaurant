@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '../store/AppContext';
+import { authService } from '../services/authService';
 
 interface NavbarProps {
   onNavigate: (page: string) => void;
@@ -109,17 +110,30 @@ export default function Navbar({ onNavigate }: NavbarProps) {
 
           {state.user ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <button
+                className="btn-outline-gold"
+                style={{ padding: '6px 12px', fontSize: '0.78rem', textTransform: 'capitalize' }}
+                onClick={() => go(state.user?.role === 'admin' ? 'admin' : state.user?.role === 'sales_rep' ? 'salesrep' : state.user?.role === 'rider' ? 'rider' : 'orders')}
+              >
+                <i className="fas fa-tachometer-alt" style={{ marginRight: '5px' }} />
+                {state.user.role === 'admin' ? 'Admin' : state.user.role === 'sales_rep' ? 'Sales Rep' : state.user.role === 'rider' ? 'Rider' : 'My Orders'}
+              </button>
               <div
                 className="avatar"
-                onClick={() => go(state.user?.role === 'admin' ? 'admin' : state.user?.role === 'sales_rep' ? 'salesrep' : state.user?.role === 'rider' ? 'rider' : 'profile')}
-                title={`Go to ${state.user.role} dashboard`}
+                onClick={() => go(state.user?.role === 'admin' ? 'admin' : state.user?.role === 'sales_rep' ? 'salesrep' : state.user?.role === 'rider' ? 'rider' : 'orders')}
+                title={`${state.user.name} (${state.user.role})`}
+                style={{ cursor: 'pointer' }}
               >
                 {state.user.name.charAt(0)}
               </div>
               <button
                 className="btn-outline-gold"
-                style={{ padding: '7px 16px', fontSize: '0.8rem' }}
-                onClick={() => { dispatch({ type: 'SET_USER', payload: null }); go('home'); }}
+                style={{ padding: '7px 14px', fontSize: '0.8rem' }}
+                onClick={async () => {
+                  await authService.signOut();
+                  dispatch({ type: 'SET_USER', payload: null });
+                  go('home');
+                }}
               >
                 Logout
               </button>

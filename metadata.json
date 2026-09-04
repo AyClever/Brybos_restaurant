@@ -1,0 +1,6 @@
+{
+  "name": "BRYBOS Restaurant",
+  "description": "Premium food delivery and restaurant management application with customer ordering, admin, sales rep, and rider dashboards.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

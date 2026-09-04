@@ -132,7 +132,7 @@ export default function OrdersPage() {
   const [filter, setFilter] = useState<'all' | OrderStatus>('all');
 
   const userOrders = state.user
-    ? state.orders.filter(o => o.customerEmail === state.user?.email || o.customerId === state.user?.id)
+    ? state.orders.filter(o => o.customerEmail === state.user?.email || String(o.customerId) === String(state.user?.id))
     : state.orders;
 
   const filtered = filter === 'all' ? userOrders : userOrders.filter(o => o.status === filter);

@@ -15,6 +15,7 @@ import OrdersPage from './pages/OrdersPage';
 import AboutPage from './pages/AboutPage';
 import ContactPage from './pages/ContactPage';
 import AuthPage from './pages/AuthPage';
+import StaffLoginPage from './pages/StaffLoginPage';
 import AdminDashboard from './pages/AdminDashboard';
 import SalesRepDashboard from './pages/SalesRepDashboard';
 import RiderDashboard from './pages/RiderDashboard';
@@ -24,24 +25,59 @@ function AppContent() {
   const { state, dispatch } = useApp();
   const [currentPage, setCurrentPage] = useState('home');
 
+  // Sync with browser URL / hash on load
+  useEffect(() => {
+    const parseUrlRoute = () => {
+      const path = window.location.pathname.toLowerCase().replace(/^\//, '').trim();
+      const hash = window.location.hash.toLowerCase().replace(/^#\/?/, '').trim();
+      const route = hash || path;
+
+      if (route === 'admin') return 'admin';
+      if (['salesrep', 'sales-rep', 'sales_rep', 'sales rep'].includes(route)) return 'salesrep';
+      if (['rider', 'riders'].includes(route)) return 'rider';
+      if (route === 'menu') return 'menu';
+      if (route === 'orders') return 'orders';
+      if (route === 'checkout') return 'checkout';
+      if (route === 'login') return 'login';
+      if (route === 'register') return 'register';
+      if (route === 'about') return 'about';
+      if (route === 'contact') return 'contact';
+      if (route === 'notifications') return 'notifications';
+      return null;
+    };
+
+    const initialRoute = parseUrlRoute();
+    if (initialRoute) {
+      setCurrentPage(initialRoute);
+      dispatch({ type: 'SET_PAGE', payload: initialRoute });
+    }
+
+    const handlePopState = () => {
+      const route = parseUrlRoute();
+      if (route) {
+        setCurrentPage(route);
+        dispatch({ type: 'SET_PAGE', payload: route });
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    window.addEventListener('hashchange', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('hashchange', handlePopState);
+    };
+  }, [dispatch]);
+
   const navigate = (page: string) => {
     setCurrentPage(page);
     dispatch({ type: 'SET_PAGE', payload: page });
+    try {
+      window.history.pushState(null, '', page === 'home' ? '/' : `/${page}`);
+    } catch {
+      // Fallback for sandboxed iframe without throwing
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
-
-  // Route guard for dashboards
-  useEffect(() => {
-    if (currentPage === 'admin' && state.user?.role !== 'admin') {
-      navigate('login');
-    }
-    if (currentPage === 'salesrep' && state.user?.role !== 'sales_rep') {
-      navigate('login');
-    }
-    if (currentPage === 'rider' && state.user?.role !== 'rider') {
-      navigate('login');
-    }
-  }, [currentPage, state.user]);
 
   const isDashboard = ['admin', 'salesrep', 'rider'].includes(currentPage);
 
@@ -53,7 +89,7 @@ function AppContent() {
       {/* Cart Sidebar */}
       <CartSidebar onCheckout={() => navigate('checkout')} />
 
-      {/* Navbar — only on non-dashboard pages */}
+      {/* Navbar — only on public non-dashboard & non-portal pages */}
       {!isDashboard && (
         <Navbar onNavigate={navigate} />
       )}
@@ -68,9 +104,33 @@ function AppContent() {
       {currentPage === 'login' && <AuthPage mode="login" onNavigate={navigate} />}
       {currentPage === 'register' && <AuthPage mode="register" onNavigate={navigate} />}
       {currentPage === 'notifications' && <NotificationsPage />}
-      {currentPage === 'admin' && state.user?.role === 'admin' && <AdminDashboard onNavigate={navigate} />}
-      {currentPage === 'salesrep' && state.user?.role === 'sales_rep' && <SalesRepDashboard onNavigate={navigate} />}
-      {currentPage === 'rider' && state.user?.role === 'rider' && <RiderDashboard onNavigate={navigate} />}
+
+      {/* Admin Portal: /admin */}
+      {currentPage === 'admin' && (
+        state.user?.role === 'admin' ? (
+          <AdminDashboard onNavigate={navigate} />
+        ) : (
+          <StaffLoginPage targetRole="admin" onNavigate={navigate} />
+        )
+      )}
+
+      {/* Sales Rep Portal: /salesrep */}
+      {currentPage === 'salesrep' && (
+        state.user?.role === 'sales_rep' ? (
+          <SalesRepDashboard onNavigate={navigate} />
+        ) : (
+          <StaffLoginPage targetRole="sales_rep" onNavigate={navigate} />
+        )
+      )}
+
+      {/* Rider Portal: /rider */}
+      {currentPage === 'rider' && (
+        state.user?.role === 'rider' ? (
+          <RiderDashboard onNavigate={navigate} />
+        ) : (
+          <StaffLoginPage targetRole="rider" onNavigate={navigate} />
+        )
+      )}
 
       {/* Footer — only on public pages */}
       {!isDashboard && !['login', 'register'].includes(currentPage) && (
