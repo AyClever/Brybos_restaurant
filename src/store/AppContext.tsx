@@ -18,6 +18,7 @@ import { orderService } from '../services/orderService';
 import { riderService } from '../services/riderService';
 import { salesRepService } from '../services/salesRepService';
 import { notificationService } from '../services/notificationService';
+import { isUuid } from '../utils/orderUtils';
 
 // Re-export types for existing consumers
 export type {
@@ -207,7 +208,7 @@ const demoOrders: Order[] = [
 const initialState: AppState = {
   user: null,
   cart: [],
-  orders: loadStoredData<Order[]>('brybos_orders', demoOrders),
+  orders: loadStoredData<Order[]>('brybos_orders', isSupabaseConfigured ? [] : demoOrders),
   menuItems: loadStoredData<MenuItem[]>('brybos_menu_items', initialMenuItems),
   riders: loadStoredData<Rider[]>('brybos_riders', initialRiders),
   salesReps: loadStoredData<SalesRep[]>('brybos_sales_reps', initialSalesReps),
@@ -520,7 +521,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       try {
         switch (action.type) {
           case 'PLACE_ORDER':
-            orderService.createOrder(action.payload).catch(err => console.warn('Order sync warning:', err));
+            if (!isUuid(action.payload.id)) {
+              orderService.createOrder(action.payload).catch(err => console.warn('Order sync warning:', err));
+            }
             break;
           case 'UPDATE_ORDER_STATUS':
             orderService.updateOrderStatus(action.payload.id, action.payload.status, {
@@ -611,9 +614,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         dispatch({ type: 'SET_SUPABASE_LIVE', payload: true });
       }
 
-      // 2. Orders
+      // 2. Orders - Supabase is source of truth
       const orderRes = await orderService.getOrders();
-      if (orderRes.data && orderRes.data.length > 0) {
+      if (orderRes.data) {
         dispatch({ type: 'SET_ORDERS', payload: orderRes.data });
         saveStoredData('brybos_orders', orderRes.data);
       }

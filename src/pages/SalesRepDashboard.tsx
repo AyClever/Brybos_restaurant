@@ -8,7 +8,7 @@ export default function SalesRepDashboard({ onNavigate }: { onNavigate: (p: stri
   const [section, setSection] = useState<Section>('dashboard');
 
   const myOrders = state.orders;
-  const newOrders = myOrders.filter(o => o.status === 'pending' && o.paymentStatus === 'paid');
+  const newOrders = myOrders.filter(o => o.status === 'pending');
   const processingOrders = myOrders.filter(o => ['confirmed', 'preparing', 'approved'].includes(o.status));
   const readyOrders = myOrders.filter(o => o.status === 'approved' && !o.riderId);
   const historyOrders = myOrders.filter(o => ['assigned', 'onway', 'delivered', 'cancelled'].includes(o.status));

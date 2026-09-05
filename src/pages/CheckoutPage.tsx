@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useApp, Order, OrderStatus } from '../store/AppContext';
+import { orderService, NotificationResponse } from '../services/orderService';
 
 interface CheckoutPageProps {
   onNavigate: (page: string) => void;
@@ -11,6 +12,8 @@ export default function CheckoutPage({ onNavigate }: CheckoutPageProps) {
   const [loading, setLoading] = useState(false);
   const [paymentDone, setPaymentDone] = useState(false);
   const [orderId, setOrderId] = useState('');
+  const [createdOrder, setCreatedOrder] = useState<Order | null>(null);
+  const [notificationStatus, setNotificationStatus] = useState<NotificationResponse | null>(null);
 
   const [form, setForm] = useState({
     name: state.user?.name || '',
@@ -29,41 +32,74 @@ export default function CheckoutPage({ onNavigate }: CheckoutPageProps) {
   };
 
   const handlePaystack = async () => {
+    if (!form.name.trim() || !form.email.trim() || !form.phone.trim() || !form.address.trim()) {
+      addNotification('warning', 'Incomplete Details', 'Please complete your name, email, phone and delivery address');
+      setStep(1);
+      return;
+    }
+
     setLoading(true);
-    await new Promise(r => setTimeout(r, 2000));
 
-    const newOrderId = `ORD${Date.now()}`;
-    const orderNum = `#${1000 + state.orders.length + 1}`;
+    try {
+      // 1. Generate customer-facing unique Brybos ID (format: Brybos-XXXXXX)
+      const orderNum = await orderService.generateUniqueOrderNumber();
 
-    const order: Order = {
-      id: newOrderId,
-      orderNumber: orderNum,
-      customerId: state.user?.id || 0,
-      customerName: form.name,
-      customerEmail: form.email,
-      customerPhone: form.phone,
-      deliveryAddress: form.address,
-      landmark: form.landmark,
-      items: [...state.cart],
-      subtotal: cartTotal,
-      vat,
-      deliveryFee: DELIVERY_FEE,
-      total: grandTotal,
-      paymentMethod: form.paymentMethod,
-      paymentStatus: form.paymentMethod === 'cash' ? 'pending' : 'paid',
-      status: 'pending' as OrderStatus,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+      // 2. Prepare complete order payload
+      const orderPayload = {
+        orderNumber: orderNum,
+        customerId: state.user?.id,
+        customerName: form.name.trim(),
+        customerEmail: form.email.trim(),
+        customerPhone: form.phone.trim(),
+        deliveryAddress: form.address.trim(),
+        landmark: form.landmark.trim(),
+        items: [...state.cart],
+        subtotal: cartTotal,
+        vat,
+        deliveryFee: DELIVERY_FEE,
+        total: grandTotal,
+        paymentMethod: form.paymentMethod,
+        paymentStatus: (form.paymentMethod === 'cash' ? 'pending' : 'paid') as 'pending' | 'paid' | 'failed',
+        status: 'pending' as OrderStatus,
+        estimatedTime: '30 - 45 mins',
+      };
 
-    dispatch({ type: 'PLACE_ORDER', payload: order });
+      // 3. Save permanently to Supabase in orders & order_items
+      const { data: savedOrder, error: saveError } = await orderService.createOrder(orderPayload);
 
-    addNotification('success', 'Order Placed!', `Order ${orderNum} has been placed. Total: ₦${grandTotal.toLocaleString()}`);
-    addNotification('info', 'New Order Alert', `New paid order ${orderNum} from ${form.name} — Sales rep notified!`);
+      if (saveError || !savedOrder) {
+        setLoading(false);
+        addNotification(
+          'error',
+          'Order Placement Failed',
+          saveError || 'Could not save your order to the database. Please try again.'
+        );
+        return;
+      }
 
-    setOrderId(newOrderId);
-    setPaymentDone(true);
-    setLoading(false);
+      // 4. Update local state & clear cart
+      dispatch({ type: 'PLACE_ORDER', payload: savedOrder });
+      dispatch({ type: 'CLEAR_CART' });
+
+      // 5. Send notifications ONLY after successful Supabase persistence
+      const notifResponse = await orderService.sendOrderNotifications(savedOrder);
+      setNotificationStatus(notifResponse);
+
+      addNotification(
+        'success',
+        'Order Placed Successfully!',
+        `Order ${savedOrder.orderNumber} has been confirmed and saved to database.`
+      );
+
+      setCreatedOrder(savedOrder);
+      setOrderId(savedOrder.id);
+      setPaymentDone(true);
+    } catch (err: any) {
+      console.error('Checkout error:', err);
+      addNotification('error', 'Checkout Error', err.message || 'An unexpected error occurred during checkout.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (state.cart.length === 0 && !paymentDone) {
@@ -79,67 +115,118 @@ export default function CheckoutPage({ onNavigate }: CheckoutPageProps) {
   }
 
   if (paymentDone) {
-    const order = state.orders.find(o => o.id === orderId) || state.orders[0];
+    const order = createdOrder || state.orders.find(o => o.id === orderId) || state.orders[0];
+    const waMessage = encodeURIComponent(
+      `Hello BRYBOS! I just placed order ${order?.orderNumber} (${order?.customerName}). Please confirm my order status!`
+    );
+
     return (
       <div className="page-transition" style={{ paddingTop: '70px', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '100px 2rem 2rem' }}>
-        <div style={{ textAlign: 'center', maxWidth: '500px', width: '100%' }}>
+        <div style={{ textAlign: 'center', maxWidth: '560px', width: '100%' }}>
           <div style={{
-            width: '100px', height: '100px', background: 'rgba(40,167,69,0.1)',
+            width: '90px', height: '90px', background: 'rgba(40,167,69,0.12)',
             border: '3px solid var(--success)', borderRadius: '50%',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '3rem', margin: '0 auto 2rem', animation: 'pulse 2s ease',
+            fontSize: '2.8rem', margin: '0 auto 1.5rem', animation: 'pulse 2s ease',
           }}>✓</div>
           <h2 style={{ fontFamily: 'Playfair Display, serif', fontSize: '2rem', fontWeight: 800, marginBottom: '0.5rem', color: 'var(--success)' }}>
             Order Confirmed!
           </h2>
-          <p style={{ color: 'rgba(255,255,255,0.6)', marginBottom: '2rem', fontSize: '1.05rem' }}>
+          <p style={{ color: 'rgba(255,255,255,0.6)', marginBottom: '1.75rem', fontSize: '1rem' }}>
             {form.paymentMethod === 'cash'
-              ? 'Your order has been placed. Payment on delivery.'
-              : 'Payment successful! Your order is being prepared.'}
+              ? 'Your order has been permanently recorded. Payment will be made on delivery.'
+              : 'Payment confirmed! Your order has been recorded and is being prepared.'}
           </p>
-          <div style={{ background: 'var(--dark-2)', border: '1px solid rgba(200,155,60,0.2)', borderRadius: '16px', padding: '1.5rem', marginBottom: '2rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-              <span style={{ color: 'rgba(255,255,255,0.5)' }}>Order Number</span>
-              <span style={{ color: 'var(--gold)', fontWeight: 700 }}>{order?.orderNumber}</span>
+
+          <div style={{ background: 'var(--dark-2)', border: '1px solid rgba(200,155,60,0.25)', borderRadius: '16px', padding: '1.5rem', marginBottom: '1.5rem', textAlign: 'left' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem', paddingBottom: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+              <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>Brybos Order ID</span>
+              <span style={{ color: 'var(--gold)', fontWeight: 800, fontSize: '1.1rem', letterSpacing: '0.5px' }}>{order?.orderNumber}</span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-              <span style={{ color: 'rgba(255,255,255,0.5)' }}>Total Paid</span>
-              <span style={{ fontWeight: 700 }}>₦{order?.total.toLocaleString()}</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', fontSize: '0.9rem' }}>
+              <span style={{ color: 'rgba(255,255,255,0.5)' }}>Customer</span>
+              <span style={{ fontWeight: 600 }}>{order?.customerName}</span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', fontSize: '0.9rem' }}>
+              <span style={{ color: 'rgba(255,255,255,0.5)' }}>Delivery Address</span>
+              <span style={{ fontWeight: 500, maxWidth: '260px', textAlign: 'right', color: 'rgba(255,255,255,0.85)' }}>{order?.deliveryAddress}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem', fontSize: '0.9rem' }}>
               <span style={{ color: 'rgba(255,255,255,0.5)' }}>Payment Method</span>
               <span style={{ textTransform: 'capitalize', fontWeight: 600 }}>
-                {form.paymentMethod === 'paystack' ? '💳 Paystack' : form.paymentMethod === 'cash' ? '💵 Cash on Delivery' : '🏦 Bank Transfer'}
+                {form.paymentMethod === 'paystack' ? '💳 Paystack (Paid)' : form.paymentMethod === 'cash' ? '💵 Cash on Delivery (Pending)' : '🏦 Bank Transfer'}
               </span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: 'rgba(255,255,255,0.5)' }}>Est. Delivery</span>
-              <span style={{ color: 'var(--success)', fontWeight: 600 }}>30 – 45 mins</span>
+
+            {/* Ordered items breakdown */}
+            {order?.items && order.items.length > 0 && (
+              <div style={{ marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                <p style={{ fontSize: '0.75rem', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 700, marginBottom: '0.5rem' }}>
+                  Ordered Items ({order.items.length})
+                </p>
+                {order.items.map((item, idx) => (
+                  <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '4px' }}>
+                    <span style={{ color: 'rgba(255,255,255,0.8)' }}>{item.name} × {item.quantity}</span>
+                    <span style={{ color: 'var(--white)', fontWeight: 600 }}>₦{(item.price * item.quantity).toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid rgba(200,155,60,0.2)', fontSize: '1.05rem' }}>
+              <span style={{ fontWeight: 700 }}>Total Amount</span>
+              <span style={{ fontWeight: 800, color: 'var(--gold)' }}>₦{order?.total.toLocaleString()}</span>
             </div>
           </div>
 
-          {/* Notification info */}
+          {/* Notification delivery confirmation box */}
           <div style={{
-            background: 'rgba(200,155,60,0.08)', border: '1px solid rgba(200,155,60,0.2)',
-            borderRadius: '12px', padding: '1rem', marginBottom: '2rem', textAlign: 'left',
+            background: 'rgba(200,155,60,0.06)', border: '1px solid rgba(200,155,60,0.25)',
+            borderRadius: '12px', padding: '1rem 1.25rem', marginBottom: '1.75rem', textAlign: 'left',
           }}>
-            <p style={{ fontWeight: 600, marginBottom: '0.5rem', color: 'var(--gold)' }}>
-              <i className="fas fa-bell" style={{ marginRight: '8px' }} /> Notifications Sent:
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
+              <p style={{ fontWeight: 700, margin: 0, color: 'var(--gold)', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <i className="fas fa-paper-plane" /> Notifications Dispatched
+              </p>
+              {notificationStatus && (
+                <span style={{ fontSize: '0.75rem', color: notificationStatus.success ? 'var(--success)' : 'var(--gold)', background: 'rgba(255,255,255,0.05)', padding: '2px 8px', borderRadius: '10px' }}>
+                  {notificationStatus.duplicate ? 'Idempotent Sync' : 'Real-time Dispatched'}
+                </span>
+              )}
+            </div>
+            <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.8)', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ color: 'var(--success)' }}>✓</span> ✉ Confirmation email sent to <strong style={{ color: '#ffffff' }}>{form.email}</strong>
+              {notificationStatus?.email?.provider && (
+                <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)' }}>({notificationStatus.email.provider})</span>
+              )}
             </p>
-            <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.6)', marginBottom: '4px' }}>
-              ✉ Email confirmation sent to {form.email}
+            <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.8)', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ color: 'var(--success)' }}>✓</span> 📱 SMS & WhatsApp dispatched to <strong style={{ color: '#ffffff' }}>{form.phone}</strong>
+              {notificationStatus?.sms?.provider && (
+                <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)' }}>({notificationStatus.sms.provider})</span>
+              )}
             </p>
-            <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.6)', marginBottom: '4px' }}>
-              📱 SMS sent to {form.phone}
-            </p>
-            <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.6)' }}>
-              🧾 Sales rep has been notified
+            <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.8)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ color: 'var(--success)' }}>✓</span> 👨‍🍳 Kitchen and sales team notified with ID <strong style={{ color: 'var(--gold)' }}>{order?.orderNumber}</strong>
             </p>
           </div>
 
-          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-            <button className="btn-gold" onClick={() => onNavigate('orders')}>Track Order</button>
-            <button className="btn-outline-gold" onClick={() => onNavigate('menu')}>Order More</button>
+          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <button className="btn-gold" onClick={() => onNavigate('orders')} style={{ padding: '10px 24px' }}>
+              <i className="fas fa-receipt" style={{ marginRight: '6px' }} /> View In My Orders
+            </button>
+            <a
+              href={`https://wa.me/234800279267?text=${waMessage}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-success"
+              style={{ padding: '10px 20px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
+            >
+              <i className="fab fa-whatsapp" style={{ marginRight: '6px' }} /> WhatsApp Support
+            </a>
+            <button className="btn-outline-gold" onClick={() => onNavigate('menu')} style={{ padding: '10px 20px' }}>
+              Order More
+            </button>
           </div>
         </div>
       </div>
