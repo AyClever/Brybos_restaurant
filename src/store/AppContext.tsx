@@ -81,7 +81,28 @@ type Action =
   | { type: 'UPDATE_SALES_REP'; payload: SalesRep }
   | { type: 'DELETE_SALES_REP'; payload: string | number }
   | { type: 'CANCEL_ORDER'; payload: string }
+  | { type: 'DELETE_ORDER'; payload: string }
   | { type: 'SET_SUPABASE_LIVE'; payload: boolean };
+
+// Local database persistence helpers for reliable multi-session edits & deletes
+const loadStoredData = <T,>(key: string, fallback: T): T => {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed as unknown as T;
+      }
+    }
+  } catch {}
+  return fallback;
+};
+
+const saveStoredData = (key: string, data: any) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(data));
+  } catch {}
+};
 
 // ===== INITIAL STARTER CATALOG =====
 const initialMenuItems: MenuItem[] = [
@@ -107,9 +128,9 @@ const initialMenuItems: MenuItem[] = [
 ];
 
 const initialRiders: Rider[] = [
-  { id: 'r1', name: 'Emeka Okafor', email: 'emeka@gmail.com', phone: '08012345678', bikeNumber: 'ABJ-123-DP', licenseNumber: 'LIC-001', availability: 'available', totalDeliveries: 148, rating: 4.8, earnings: 450000, roleNumber: 1, loginPassword: 'salesrep1' },
-  { id: 'r2', name: 'Chukwuemeka Eze', email: 'eze@gmail.com', phone: '08023456789', bikeNumber: 'LG-456-DP', licenseNumber: 'LIC-002', availability: 'busy', totalDeliveries: 97, rating: 4.6, earnings: 310000, roleNumber: 2, loginPassword: 'salesrep2' },
-  { id: 'r3', name: 'Babatunde Afolabi', email: 'afolabi@gmail.com', phone: '08034567890', bikeNumber: 'KN-789-DP', licenseNumber: 'LIC-003', availability: 'offline', totalDeliveries: 203, rating: 4.9, earnings: 620000, roleNumber: 3, loginPassword: 'salesrep3' },
+  { id: 'r1', name: 'Emeka Okafor', email: 'emeka@gmail.com', phone: '08012345678', bikeNumber: 'ABJ-123-DP', licenseNumber: 'LIC-001', availability: 'available', totalDeliveries: 148, rating: 4.8, earnings: 450000, roleNumber: 1, loginPassword: 'riders1' },
+  { id: 'r2', name: 'Chukwuemeka Eze', email: 'eze@gmail.com', phone: '08023456789', bikeNumber: 'LG-456-DP', licenseNumber: 'LIC-002', availability: 'busy', totalDeliveries: 97, rating: 4.6, earnings: 310000, roleNumber: 2, loginPassword: 'riders2' },
+  { id: 'r3', name: 'Babatunde Afolabi', email: 'afolabi@gmail.com', phone: '08034567890', bikeNumber: 'KN-789-DP', licenseNumber: 'LIC-003', availability: 'offline', totalDeliveries: 203, rating: 4.9, earnings: 620000, roleNumber: 3, loginPassword: 'riders3' },
 ];
 
 const initialSalesReps: SalesRep[] = [
@@ -186,10 +207,10 @@ const demoOrders: Order[] = [
 const initialState: AppState = {
   user: null,
   cart: [],
-  orders: demoOrders,
-  menuItems: initialMenuItems,
-  riders: initialRiders,
-  salesReps: initialSalesReps,
+  orders: loadStoredData<Order[]>('brybos_orders', demoOrders),
+  menuItems: loadStoredData<MenuItem[]>('brybos_menu_items', initialMenuItems),
+  riders: loadStoredData<Rider[]>('brybos_riders', initialRiders),
+  salesReps: loadStoredData<SalesRep[]>('brybos_sales_reps', initialSalesReps),
   notifications: [
     {
       id: 'N1',
@@ -275,37 +296,55 @@ function reducer(state: AppState, action: Action): AppState {
     case 'CLOSE_CART':
       return { ...state, isCartOpen: false };
 
-    case 'PLACE_ORDER':
+    case 'PLACE_ORDER': {
+      const newOrders = [action.payload, ...state.orders];
+      saveStoredData('brybos_orders', newOrders);
       return {
         ...state,
-        orders: [action.payload, ...state.orders],
+        orders: newOrders,
         cart: [],
         coupon: null,
       };
+    }
 
-    case 'UPDATE_ORDER_STATUS':
+    case 'UPDATE_ORDER_STATUS': {
+      const newOrders = state.orders.map(o =>
+        o.id === action.payload.id
+          ? {
+              ...o,
+              status: action.payload.status,
+              updatedAt: new Date().toISOString(),
+              riderId: action.payload.riderId !== undefined ? action.payload.riderId : o.riderId,
+              riderName: action.payload.riderName !== undefined ? action.payload.riderName : o.riderName,
+            }
+          : o
+      );
+      saveStoredData('brybos_orders', newOrders);
       return {
         ...state,
-        orders: state.orders.map(o =>
-          o.id === action.payload.id
-            ? {
-                ...o,
-                status: action.payload.status,
-                updatedAt: new Date().toISOString(),
-                riderId: action.payload.riderId !== undefined ? action.payload.riderId : o.riderId,
-                riderName: action.payload.riderName !== undefined ? action.payload.riderName : o.riderName,
-              }
-            : o
-        ),
+        orders: newOrders,
       };
+    }
 
-    case 'CANCEL_ORDER':
+    case 'CANCEL_ORDER': {
+      const newOrders: Order[] = state.orders.map(o =>
+        o.id === action.payload ? { ...o, status: 'cancelled' as OrderStatus, updatedAt: new Date().toISOString() } : o
+      );
+      saveStoredData('brybos_orders', newOrders);
       return {
         ...state,
-        orders: state.orders.map(o =>
-          o.id === action.payload ? { ...o, status: 'cancelled', updatedAt: new Date().toISOString() } : o
-        ),
+        orders: newOrders,
       };
+    }
+
+    case 'DELETE_ORDER': {
+      const newOrders = state.orders.filter(o => o.id !== action.payload);
+      saveStoredData('brybos_orders', newOrders);
+      return {
+        ...state,
+        orders: newOrders,
+      };
+    }
 
     case 'ADD_NOTIFICATION': {
       const unread = state.notifications.filter(n => !n.read).length + 1;
@@ -339,40 +378,70 @@ function reducer(state: AppState, action: Action): AppState {
     case 'REMOVE_COUPON':
       return { ...state, coupon: null };
 
-    case 'ADD_MENU_ITEM':
-      return { ...state, menuItems: [...state.menuItems, action.payload] };
+    case 'ADD_MENU_ITEM': {
+      const newMenu = [...state.menuItems, action.payload];
+      saveStoredData('brybos_menu_items', newMenu);
+      return { ...state, menuItems: newMenu };
+    }
 
-    case 'UPDATE_MENU_ITEM':
-      return { ...state, menuItems: state.menuItems.map(m => String(m.id) === String(action.payload.id) ? action.payload : m) };
+    case 'UPDATE_MENU_ITEM': {
+      const newMenu = state.menuItems.map(m => String(m.id) === String(action.payload.id) ? action.payload : m);
+      saveStoredData('brybos_menu_items', newMenu);
+      return { ...state, menuItems: newMenu };
+    }
 
-    case 'DELETE_MENU_ITEM':
-      return { ...state, menuItems: state.menuItems.filter(m => String(m.id) !== String(action.payload)) };
+    case 'DELETE_MENU_ITEM': {
+      const newMenu = state.menuItems.filter(m => String(m.id) !== String(action.payload));
+      saveStoredData('brybos_menu_items', newMenu);
+      return { ...state, menuItems: newMenu };
+    }
 
-    case 'ADD_RIDER':
-      return { ...state, riders: [...state.riders, action.payload] };
+    case 'ADD_RIDER': {
+      const newRiders = [...state.riders, action.payload];
+      saveStoredData('brybos_riders', newRiders);
+      return { ...state, riders: newRiders };
+    }
 
-    case 'UPDATE_RIDER':
-      return { ...state, riders: state.riders.map(r => String(r.id) === String(action.payload.id) ? action.payload : r) };
+    case 'UPDATE_RIDER': {
+      const newRiders = state.riders.map(r => String(r.id) === String(action.payload.id) ? action.payload : r);
+      saveStoredData('brybos_riders', newRiders);
+      return { ...state, riders: newRiders };
+    }
 
-    case 'DELETE_RIDER':
-      return { ...state, riders: state.riders.filter(r => String(r.id) !== String(action.payload)) };
+    case 'DELETE_RIDER': {
+      const newRiders = state.riders.filter(r => String(r.id) !== String(action.payload));
+      saveStoredData('brybos_riders', newRiders);
+      return { ...state, riders: newRiders };
+    }
 
-    case 'UPDATE_RIDER_STATUS':
+    case 'UPDATE_RIDER_STATUS': {
+      const newRiders = state.riders.map(r =>
+        String(r.id) === String(action.payload.id) ? { ...r, availability: action.payload.availability } : r
+      );
+      saveStoredData('brybos_riders', newRiders);
       return {
         ...state,
-        riders: state.riders.map(r =>
-          String(r.id) === String(action.payload.id) ? { ...r, availability: action.payload.availability } : r
-        ),
+        riders: newRiders,
       };
+    }
 
-    case 'ADD_SALES_REP':
-      return { ...state, salesReps: [...state.salesReps, action.payload] };
+    case 'ADD_SALES_REP': {
+      const newReps = [...state.salesReps, action.payload];
+      saveStoredData('brybos_sales_reps', newReps);
+      return { ...state, salesReps: newReps };
+    }
 
-    case 'UPDATE_SALES_REP':
-      return { ...state, salesReps: state.salesReps.map(s => String(s.id) === String(action.payload.id) ? action.payload : s) };
+    case 'UPDATE_SALES_REP': {
+      const newReps = state.salesReps.map(s => String(s.id) === String(action.payload.id) ? action.payload : s);
+      saveStoredData('brybos_sales_reps', newReps);
+      return { ...state, salesReps: newReps };
+    }
 
-    case 'DELETE_SALES_REP':
-      return { ...state, salesReps: state.salesReps.filter(s => String(s.id) !== String(action.payload)) };
+    case 'DELETE_SALES_REP': {
+      const newReps = state.salesReps.filter(s => String(s.id) !== String(action.payload));
+      saveStoredData('brybos_sales_reps', newReps);
+      return { ...state, salesReps: newReps };
+    }
 
     default:
       return state;
@@ -462,6 +531,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           case 'CANCEL_ORDER':
             orderService.cancelOrder(action.payload).catch(err => console.warn('Cancel order sync warning:', err));
             break;
+          case 'DELETE_ORDER':
+            orderService.deleteOrder(action.payload).catch(err => console.warn('Order delete sync warning:', err));
+            break;
           case 'ADD_MENU_ITEM':
             menuService.createMenuItem(action.payload).catch(err => console.warn('Menu item create sync warning:', err));
             break;
@@ -476,22 +548,44 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             break;
           case 'UPDATE_RIDER':
             riderService.updateRider(action.payload.id, action.payload).catch(err => console.warn('Rider update sync warning:', err));
+            if (action.payload.email) {
+              authService.updateStaffCredential(action.payload.email, {
+                name: action.payload.name,
+                phone: action.payload.phone,
+              });
+            }
             break;
           case 'UPDATE_RIDER_STATUS':
             riderService.updateRider(action.payload.id, { availability: action.payload.availability }).catch(err => console.warn('Rider status sync warning:', err));
             break;
-          case 'DELETE_RIDER':
+          case 'DELETE_RIDER': {
             riderService.deleteRider(action.payload).catch(err => console.warn('Rider delete sync warning:', err));
+            const riderMatch = state.riders.find(r => String(r.id) === String(action.payload));
+            if (riderMatch?.email) {
+              authService.removeStaffCredential(riderMatch.email);
+            }
             break;
+          }
           case 'ADD_SALES_REP':
             salesRepService.createSalesRep(action.payload).catch(err => console.warn('Sales rep create sync warning:', err));
             break;
           case 'UPDATE_SALES_REP':
             salesRepService.updateSalesRep(action.payload.id, action.payload).catch(err => console.warn('Sales rep update sync warning:', err));
+            if (action.payload.email) {
+              authService.updateStaffCredential(action.payload.email, {
+                name: action.payload.name,
+                phone: action.payload.phone,
+              });
+            }
             break;
-          case 'DELETE_SALES_REP':
+          case 'DELETE_SALES_REP': {
             salesRepService.deleteSalesRep(action.payload).catch(err => console.warn('Sales rep delete sync warning:', err));
+            const repMatch = state.salesReps.find(s => String(s.id) === String(action.payload));
+            if (repMatch?.email) {
+              authService.removeStaffCredential(repMatch.email);
+            }
             break;
+          }
           case 'MARK_NOTIF_READ':
             notificationService.markAsRead(action.payload).catch(err => console.warn('Mark notif read sync warning:', err));
             break;
@@ -503,7 +597,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         console.warn('Action sync error:', err);
       }
     }
-  }, []);
+  }, [state.riders, state.salesReps]);
 
   const refreshData = useCallback(async () => {
     if (!isSupabaseConfigured) return;
@@ -513,6 +607,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const menuRes = await menuService.getMenuItems();
       if (menuRes.data && menuRes.data.length > 0) {
         dispatch({ type: 'SET_MENU_ITEMS', payload: menuRes.data });
+        saveStoredData('brybos_menu_items', menuRes.data);
         dispatch({ type: 'SET_SUPABASE_LIVE', payload: true });
       }
 
@@ -520,18 +615,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const orderRes = await orderService.getOrders();
       if (orderRes.data && orderRes.data.length > 0) {
         dispatch({ type: 'SET_ORDERS', payload: orderRes.data });
+        saveStoredData('brybos_orders', orderRes.data);
       }
 
       // 3. Riders
       const riderRes = await riderService.getRiders();
       if (riderRes.data && riderRes.data.length > 0) {
         dispatch({ type: 'SET_RIDERS', payload: riderRes.data });
+        saveStoredData('brybos_riders', riderRes.data);
       }
 
       // 4. Sales reps
       const repRes = await salesRepService.getSalesReps();
       if (repRes.data && repRes.data.length > 0) {
         dispatch({ type: 'SET_SALES_REPS', payload: repRes.data });
+        saveStoredData('brybos_sales_reps', repRes.data);
       }
 
       // 5. Notifications

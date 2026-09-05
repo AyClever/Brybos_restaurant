@@ -2,20 +2,12 @@ import { useState } from 'react';
 import { useApp } from '../store/AppContext';
 import { authService } from '../services/authService';
 import { isSupabaseConfigured } from '../lib/supabase';
-import { UserRole } from '../types';
 
 interface AuthPageProps {
   mode: 'login' | 'register';
   onNavigate: (page: string) => void;
 }
 
-const CUSTOMER_DEMO_ACCOUNT = {
-  email: 'customer@brybos.com',
-  password: 'password',
-  role: 'customer' as UserRole,
-  name: 'John Adebayo',
-  phone: '08055667788',
-};
 
 export default function AuthPage({ mode, onNavigate }: AuthPageProps) {
   const { dispatch, addNotification } = useApp();
@@ -209,70 +201,7 @@ export default function AuthPage({ mode, onNavigate }: AuthPageProps) {
           </div>
         </div>
 
-        {/* Quick Customer Test Button */}
-        {mode === 'login' && (
-          <div style={{ marginTop: '1.25rem', background: 'rgba(200,155,60,0.06)', border: '1px solid rgba(200,155,60,0.15)', borderRadius: '14px', padding: '1rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <span style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--gold)' }}>
-                  <i className="fas fa-user" style={{ marginRight: '6px' }} /> Demo Customer:
-                </span>
-                <span style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.6)', marginLeft: '6px' }}>
-                  {CUSTOMER_DEMO_ACCOUNT.email}
-                </span>
               </div>
-              <button
-                type="button"
-                className="btn-outline-gold"
-                style={{ padding: '4px 10px', fontSize: '0.75rem' }}
-                onClick={() => {
-                  setForm({ ...form, email: CUSTOMER_DEMO_ACCOUNT.email, password: CUSTOMER_DEMO_ACCOUNT.password });
-                  setError('');
-                }}
-              >
-                Fill Credentials
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Staff & Admin Access Links */}
-        <div style={{
-          marginTop: '1.5rem',
-          textAlign: 'center',
-          background: 'rgba(255,255,255,0.02)',
-          border: '1px solid rgba(255,255,255,0.06)',
-          borderRadius: '12px',
-          padding: '12px',
-          fontSize: '0.8rem',
-        }}>
-          <span style={{ color: 'rgba(255,255,255,0.4)', display: 'block', marginBottom: '6px' }}>
-            Restaurant Staff & Administration Access:
-          </span>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '14px', flexWrap: 'wrap' }}>
-            <span
-              style={{ color: 'var(--gold)', cursor: 'pointer', fontWeight: 600, textDecoration: 'underline' }}
-              onClick={() => onNavigate('admin')}
-            >
-              🔒 Admin Portal
-            </span>
-            <span style={{ color: 'rgba(255,255,255,0.2)' }}>|</span>
-            <span
-              style={{ color: 'var(--gold)', cursor: 'pointer', fontWeight: 600, textDecoration: 'underline' }}
-              onClick={() => onNavigate('salesrep')}
-            >
-              🧑‍💼 Sales Rep Portal
-            </span>
-            <span style={{ color: 'rgba(255,255,255,0.2)' }}>|</span>
-            <span
-              style={{ color: 'var(--gold)', cursor: 'pointer', fontWeight: 600, textDecoration: 'underline' }}
-              onClick={() => onNavigate('rider')}
-            >
-              🏍️ Rider Portal
-            </span>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

@@ -181,6 +181,19 @@ export const orderService = {
     return this.updateOrderStatus(orderId, 'cancelled');
   },
 
+  async deleteOrder(orderId: string): Promise<{ error: string | null }> {
+    if (!isSupabaseConfigured) return { error: null };
+    try {
+      await supabase.from('order_items').delete().eq('order_id', orderId);
+      const { error } = await supabase.from('orders').delete().eq('id', orderId);
+      if (error) throw error;
+      return { error: null };
+    } catch (err: any) {
+      console.error('Error deleting order:', err);
+      return { error: err.message };
+    }
+  },
+
   subscribeToOrders(callback: (payload: any) => void) {
     if (!isSupabaseConfigured) return () => {};
     const channel = supabase

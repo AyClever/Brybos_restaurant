@@ -99,19 +99,7 @@ export default function Footer({ onNavigate }: FooterProps) {
           © {new Date().getFullYear()} <span style={{ color: 'var(--gold)' }}>BRYBOS</span> Restaurant. All rights reserved. |
           Built with ❤️ for Nigeria's finest dining experience.
         </p>
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
-          <a onClick={() => onNavigate('admin')} style={{ color: 'var(--gold)', fontSize: '0.8rem', cursor: 'pointer', textDecoration: 'none' }}>
-            🔒 Admin Portal
-          </a>
-          <span style={{ color: 'rgba(255,255,255,0.2)' }}>•</span>
-          <a onClick={() => onNavigate('salesrep')} style={{ color: 'var(--gold)', fontSize: '0.8rem', cursor: 'pointer', textDecoration: 'none' }}>
-            🧑‍💼 Sales Rep Portal
-          </a>
-          <span style={{ color: 'rgba(255,255,255,0.2)' }}>•</span>
-          <a onClick={() => onNavigate('rider')} style={{ color: 'var(--gold)', fontSize: '0.8rem', cursor: 'pointer', textDecoration: 'none' }}>
-            🏍️ Rider Portal
-          </a>
-        </div>
+        
         <div style={{ display: 'flex', justifyContent: 'center', gap: '2rem', marginTop: '0.5rem' }}>
           {['Privacy Policy', 'Terms of Service', 'Cookie Policy'].map((l, i) => (
             <a key={i} href="#" style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.75rem', textDecoration: 'none' }}>{l}</a>

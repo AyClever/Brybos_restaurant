@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { useApp, OrderStatus, Rider, SalesRep, MenuItem } from '../store/AppContext';
 import { menuService } from '../services/menuService';
-import { authService } from '../services/authService';
+import { authService, customerStore, LocalCustomerAccount } from '../services/authService';
 import { isSupabaseConfigured } from '../lib/supabase';
 
 type AdminSection = 'dashboard' | 'orders' | 'customers' | 'salesreps' | 'riders' | 'menu' | 'tracking' | 'payments' | 'notifications';
@@ -80,6 +80,56 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
   } | null>(null);
   const [copiedKey, setCopiedKey] = useState(false);
 
+  // Delete Confirmation Modal state
+  const [deleteModal, setDeleteModal] = useState<{
+    title: string;
+    itemType: string;
+    itemName: string;
+    itemSubtitle?: string;
+    warningNote?: string;
+    onConfirm: () => void | Promise<void>;
+  } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Customer Management
+  const [registeredCustomers, setRegisteredCustomers] = useState<LocalCustomerAccount[]>(() => customerStore.getAll());
+  const [editingCustomerEmail, setEditingCustomerEmail] = useState<string | null>(null);
+  const [customerEditForm, setCustomerEditForm] = useState({ name: '', phone: '' });
+
+  const refreshCustomers = () => {
+    setRegisteredCustomers(customerStore.getAll());
+  };
+
+  const handleStartEditCustomer = (c: LocalCustomerAccount) => {
+    setEditingCustomerEmail(c.email);
+    setCustomerEditForm({ name: c.name, phone: c.phone || '' });
+  };
+
+  const handleSaveCustomer = (email: string) => {
+    customerStore.update(email, {
+      name: customerEditForm.name.trim(),
+      phone: customerEditForm.phone.trim(),
+    });
+    setRegisteredCustomers(customerStore.getAll());
+    setEditingCustomerEmail(null);
+    addNotification('success', 'Customer Updated', `${customerEditForm.name}'s profile updated and saved to database`);
+  };
+
+  const handleDeleteCustomer = (email: string, name: string) => {
+    setDeleteModal({
+      title: 'Delete Customer Account',
+      itemType: 'Customer',
+      itemName: name,
+      itemSubtitle: `Email: ${email}`,
+      warningNote: 'This will permanently remove this customer account and profile from the database.',
+      onConfirm: async () => {
+        customerStore.delete(email);
+        setRegisteredCustomers(customerStore.getAll());
+        addNotification('warning', 'Customer Removed', `Customer ${name} deleted from database`);
+      },
+    });
+  };
+
   const pendingOrders = state.orders.filter(o => o.status === 'pending').length;
   const totalRevenue = state.orders.filter(o => o.paymentStatus === 'paid').reduce((s, o) => s + o.total, 0);
   const activeRiders = state.riders.filter(r => r.availability === 'busy').length;
@@ -123,11 +173,11 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
     if (editRiderId) {
       const existing = state.riders.find(r => r.id === editRiderId)!;
       dispatch({ type: 'UPDATE_RIDER', payload: { ...existing, ...riderForm, email: riderEmail } });
-      addNotification('success', 'Rider Updated', `${cleanName}'s profile updated`);
+      addNotification('success', 'Rider Updated', `${cleanName}'s profile updated and saved to database`);
       setEditRiderId(null);
     } else {
       const roleNumber = state.riders.length + 1;
-      const generatedPassword = `salesrep${roleNumber}`;
+      const generatedPassword = `riders${roleNumber}`;
 
       // Register staff with email and generated password
       await authService.registerStaff({
@@ -511,6 +561,26 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
                                 <button className="btn-danger" style={{ padding: '4px 10px', fontSize: '0.78rem' }}
                                   onClick={() => dispatch({ type: 'CANCEL_ORDER', payload: o.id })}>Cancel</button>
                               )}
+                              <button
+                                className="btn-danger"
+                                style={{ padding: '4px 8px', fontSize: '0.78rem', background: 'rgba(220,53,69,0.2)', border: '1px solid var(--danger)', cursor: 'pointer' }}
+                                title="Delete order from database"
+                                onClick={() => {
+                                  setDeleteModal({
+                                    title: 'Delete Order',
+                                    itemType: 'Order',
+                                    itemName: `Order ${o.orderNumber}`,
+                                    itemSubtitle: `Customer: ${o.customerName} • ₦${o.total.toLocaleString()} • Status: ${o.status.toUpperCase()}`,
+                                    warningNote: 'This will permanently remove this order and all its items from the database.',
+                                    onConfirm: async () => {
+                                      dispatch({ type: 'DELETE_ORDER', payload: o.id });
+                                      addNotification('warning', 'Order Deleted', `Order ${o.orderNumber} deleted from database`);
+                                    },
+                                  });
+                                }}
+                              >
+                                <i className="fas fa-trash" />
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -529,7 +599,7 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
                 <div>
                   <h3 style={{ fontFamily: 'Playfair Display, serif', fontSize: '1.2rem', margin: 0 }}>Dispatch Riders ({state.riders.length})</h3>
                   <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'rgba(255,255,255,0.45)' }}>
-                    Admin registers riders with their Gmail; password is auto-created as <code style={{ color: 'var(--gold)' }}>salesrep&lt;role#&gt;</code>.
+                    Admin registers riders.
                   </p>
                 </div>
                 <button className="btn-gold" onClick={() => { setShowRiderForm(!showRiderForm); setEditRiderId(null); setRiderForm({ name: '', email: '', phone: '', bikeNumber: '', licenseNumber: '' }); }}>
@@ -587,7 +657,7 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
                           Login Email: <strong style={{ color: 'var(--white)' }}>{riderForm.email.trim() || `${(riderForm.name.trim().toLowerCase().replace(/[^a-z0-9]/g, '') || 'rider')}@gmail.com`}</strong>
                         </div>
                         <div style={{ color: 'rgba(255,255,255,0.7)' }}>
-                          Login Password: <strong style={{ color: 'var(--gold)', fontFamily: 'monospace' }}>salesrep{state.riders.length + 1}</strong>
+                          Login Password: <strong style={{ color: 'var(--gold)', fontFamily: 'monospace' }}>riders{state.riders.length + 1}</strong>
                         </div>
                       </div>
                       <span className="badge badge-gold" style={{ fontSize: '0.75rem', padding: '4px 10px' }}>
@@ -608,7 +678,7 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
               <div className="grid-3">
                 {state.riders.map((rider, idx) => {
                   const roleNum = rider.roleNumber || idx + 1;
-                  const loginPass = rider.loginPassword || `salesrep${roleNum}`;
+                  const loginPass = rider.loginPassword || `riders${roleNum}`;
                   const riderEmail = rider.email || `${rider.name.toLowerCase().split(' ')[0]}@gmail.com`;
 
                   return (
@@ -689,8 +759,21 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
                           }}>
                           Edit
                         </button>
-                        <button className="btn-danger" style={{ padding: '6px 10px', fontSize: '0.78rem' }}
-                          onClick={() => { dispatch({ type: 'DELETE_RIDER', payload: rider.id }); addNotification('warning', 'Rider Removed', `${rider.name} removed`); }}>
+                        <button className="btn-danger" style={{ padding: '6px 10px', fontSize: '0.78rem', cursor: 'pointer' }}
+                          title="Delete rider record"
+                          onClick={() => {
+                            setDeleteModal({
+                              title: 'Delete Dispatch Rider',
+                              itemType: 'Rider',
+                              itemName: rider.name,
+                              itemSubtitle: `${riderEmail} • Bike: ${rider.bikeNumber || 'N/A'} • Role #${roleNum}`,
+                              warningNote: 'This will permanently remove this rider, revoke their login access, and delete their profile from the database.',
+                              onConfirm: async () => {
+                                dispatch({ type: 'DELETE_RIDER', payload: rider.id });
+                                addNotification('warning', 'Rider Removed', `${rider.name} deleted from database and credentials revoked`);
+                              },
+                            });
+                          }}>
                           <i className="fas fa-trash" />
                         </button>
                       </div>
@@ -708,7 +791,7 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
                 <div>
                   <h3 style={{ fontFamily: 'Playfair Display, serif', fontSize: '1.2rem', margin: 0 }}>Sales Representatives ({state.salesReps.length})</h3>
                   <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'rgba(255,255,255,0.45)' }}>
-                    Admin registers sales reps with their Gmail; password is auto-created as <code style={{ color: 'var(--gold)' }}>salesrep&lt;role#&gt;</code>.
+                    Admin registers sales reps.
                   </p>
                 </div>
                 <button className="btn-gold" onClick={() => { setShowRepForm(!showRepForm); setEditRepId(null); setRepForm({ name: '', email: '', phone: '', address: '' }); }}>
@@ -843,8 +926,21 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
                                 }}>
                                 Edit
                               </button>
-                              <button className="btn-danger" style={{ padding: '4px 8px', fontSize: '0.78rem' }}
-                                onClick={() => { dispatch({ type: 'DELETE_SALES_REP', payload: rep.id }); addNotification('warning', 'Rep Removed', `${rep.name} removed`); }}>
+                              <button className="btn-danger" style={{ padding: '4px 8px', fontSize: '0.78rem', cursor: 'pointer' }}
+                                title="Delete sales rep"
+                                onClick={() => {
+                                  setDeleteModal({
+                                    title: 'Delete Sales Representative',
+                                    itemType: 'Sales Representative',
+                                    itemName: rep.name,
+                                    itemSubtitle: `${rep.email} • Role #${rep.roleNumber || 1} • Orders Handled: ${rep.ordersHandled}`,
+                                    warningNote: 'This will permanently remove this sales representative, revoke their login access, and delete their profile from the database.',
+                                    onConfirm: async () => {
+                                      dispatch({ type: 'DELETE_SALES_REP', payload: rep.id });
+                                      addNotification('warning', 'Rep Removed', `${rep.name} deleted from database and credentials revoked`);
+                                    },
+                                  });
+                                }}>
                                 <i className="fas fa-trash" />
                               </button>
                             </div>
@@ -1003,8 +1099,21 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
                             >
                               {item.available ? 'Disable' : 'Enable'}
                             </button>
-                            <button className="btn-danger" style={{ padding: '4px 8px', fontSize: '0.78rem' }}
-                              onClick={() => { dispatch({ type: 'DELETE_MENU_ITEM', payload: item.id }); addNotification('warning', 'Meal Deleted', `${item.name} removed from menu`); }}>
+                            <button className="btn-danger" style={{ padding: '4px 8px', fontSize: '0.78rem', cursor: 'pointer' }}
+                              title="Delete meal"
+                              onClick={() => {
+                                setDeleteModal({
+                                  title: 'Delete Meal from Menu',
+                                  itemType: 'Menu Item',
+                                  itemName: item.name,
+                                  itemSubtitle: `Category: ${item.category} • Price: ₦${item.price.toLocaleString()}`,
+                                  warningNote: 'This will permanently remove this meal from the customer menu and database.',
+                                  onConfirm: async () => {
+                                    dispatch({ type: 'DELETE_MENU_ITEM', payload: item.id });
+                                    addNotification('warning', 'Meal Deleted', `"${item.name}" deleted from menu and database`);
+                                  },
+                                });
+                              }}>
                               <i className="fas fa-trash" />
                             </button>
                           </div>
@@ -1236,9 +1345,131 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
           {/* ===== CUSTOMERS ===== */}
           {section === 'customers' && (
             <div className="tab-panel">
+              {/* Registered Customer Accounts Section */}
+              <div className="data-table-wrapper" style={{ marginBottom: '2rem' }}>
+                <div className="data-table-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <span className="data-table-title">Registered Customer Accounts ({registeredCustomers.length})</span>
+                    <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: 'rgba(255,255,255,0.45)' }}>
+                      All registered customers who can sign in with their email and password. Admins can edit or delete accounts.
+                    </p>
+                  </div>
+                  <button
+                    className="btn-outline-gold"
+                    style={{ padding: '4px 12px', fontSize: '0.78rem' }}
+                    onClick={refreshCustomers}
+                  >
+                    <i className="fas fa-sync-alt" style={{ marginRight: '6px' }} /> Refresh
+                  </button>
+                </div>
+
+                {registeredCustomers.length === 0 ? (
+                  <div style={{ padding: '2rem', textAlign: 'center', color: 'rgba(255,255,255,0.4)' }}>
+                    No registered customers yet. New customers registering on the Customer Login page will appear here.
+                  </div>
+                ) : (
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Customer Name</th>
+                        <th>Email</th>
+                        <th>Phone Number</th>
+                        <th>Registered Date</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {registeredCustomers.map(cust => {
+                        const isEditing = editingCustomerEmail === cust.email;
+                        return (
+                          <tr key={cust.email}>
+                            <td>
+                              {isEditing ? (
+                                <input
+                                  type="text"
+                                  className="form-control"
+                                  value={customerEditForm.name}
+                                  onChange={e => setCustomerEditForm({ ...customerEditForm, name: e.target.value })}
+                                  style={{ padding: '4px 8px', fontSize: '0.85rem' }}
+                                />
+                              ) : (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600 }}>
+                                  <div className="avatar" style={{ width: 30, height: 30, fontSize: '0.85rem' }}>
+                                    {cust.name.charAt(0).toUpperCase()}
+                                  </div>
+                                  {cust.name}
+                                </div>
+                              )}
+                            </td>
+                            <td style={{ color: 'var(--gold)', fontSize: '0.85rem' }}>{cust.email}</td>
+                            <td>
+                              {isEditing ? (
+                                <input
+                                  type="text"
+                                  className="form-control"
+                                  value={customerEditForm.phone}
+                                  onChange={e => setCustomerEditForm({ ...customerEditForm, phone: e.target.value })}
+                                  style={{ padding: '4px 8px', fontSize: '0.85rem' }}
+                                />
+                              ) : (
+                                <span style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.7)' }}>{cust.phone || 'N/A'}</span>
+                              )}
+                            </td>
+                            <td style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.4)' }}>
+                              {cust.createdAt ? new Date(cust.createdAt).toLocaleDateString('en-NG') : 'Recent'}
+                            </td>
+                            <td>
+                              <div style={{ display: 'flex', gap: '6px' }}>
+                                {isEditing ? (
+                                  <>
+                                    <button
+                                      className="btn-gold"
+                                      style={{ padding: '4px 10px', fontSize: '0.78rem' }}
+                                      onClick={() => handleSaveCustomer(cust.email)}
+                                    >
+                                      Save
+                                    </button>
+                                    <button
+                                      className="btn-outline-gold"
+                                      style={{ padding: '4px 8px', fontSize: '0.78rem' }}
+                                      onClick={() => setEditingCustomerEmail(null)}
+                                    >
+                                      Cancel
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button
+                                      className="btn-outline-gold"
+                                      style={{ padding: '4px 10px', fontSize: '0.78rem' }}
+                                      onClick={() => handleStartEditCustomer(cust)}
+                                    >
+                                      Edit
+                                    </button>
+                                    <button
+                                      className="btn-danger"
+                                      style={{ padding: '4px 8px', fontSize: '0.78rem', cursor: 'pointer' }}
+                                      title="Delete customer record"
+                                      onClick={() => handleDeleteCustomer(cust.email, cust.name)}
+                                    >
+                                      <i className="fas fa-trash" />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              {/* Customer Orders Summary Section */}
               <div className="data-table-wrapper">
                 <div className="data-table-header">
-                  <span className="data-table-title">Customer Orders</span>
+                  <span className="data-table-title">Customer Orders & Lifetime Spend</span>
                 </div>
                 <table className="data-table">
                   <thead>
@@ -1371,6 +1602,141 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
                 onClick={() => setCreatedStaffCredential(null)}
               >
                 Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== CONFIRM DELETE MODAL ===== */}
+      {deleteModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.82)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 99999,
+            padding: '1.25rem',
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isDeleting) {
+              setDeleteModal(null);
+            }
+          }}
+        >
+          <div
+            className="card"
+            style={{
+              maxWidth: '460px',
+              width: '100%',
+              border: '1px solid rgba(220,53,69,0.45)',
+              background: '#161616',
+              boxShadow: '0 25px 60px rgba(0,0,0,0.85), 0 0 35px rgba(220,53,69,0.2)',
+              textAlign: 'center',
+              padding: '2rem 1.75rem',
+              borderRadius: '16px',
+            }}
+          >
+            <div
+              style={{
+                width: '64px',
+                height: '64px',
+                borderRadius: '50%',
+                background: 'rgba(220,53,69,0.15)',
+                border: '2px solid rgba(220,53,69,0.4)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 1.25rem',
+              }}
+            >
+              <i className="fas fa-trash-alt" style={{ fontSize: '1.6rem', color: '#ff4d4d' }} />
+            </div>
+
+            <h3 style={{ fontFamily: 'Playfair Display, serif', fontSize: '1.35rem', margin: '0 0 0.5rem', color: 'var(--white)' }}>
+              {deleteModal.title}
+            </h3>
+
+            <p style={{ margin: '0 0 1rem', fontSize: '0.88rem', color: 'rgba(255,255,255,0.6)' }}>
+              Are you sure you want to permanently delete this {deleteModal.itemType.toLowerCase()}?
+            </p>
+
+            <div
+              style={{
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: '10px',
+                padding: '1rem',
+                margin: '1rem 0',
+                textAlign: 'left',
+              }}
+            >
+              <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--white)', marginBottom: '4px' }}>
+                {deleteModal.itemName}
+              </div>
+              {deleteModal.itemSubtitle && (
+                <div style={{ fontSize: '0.82rem', color: 'var(--gold)', marginBottom: '8px' }}>
+                  {deleteModal.itemSubtitle}
+                </div>
+              )}
+              {deleteModal.warningNote && (
+                <div style={{ fontSize: '0.78rem', color: '#ff8080', display: 'flex', alignItems: 'flex-start', gap: '6px', marginTop: '6px' }}>
+                  <i className="fas fa-exclamation-triangle" style={{ marginTop: '2px', flexShrink: 0 }} />
+                  <span>{deleteModal.warningNote}</span>
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', marginTop: '1.5rem' }}>
+              <button
+                type="button"
+                className="btn-outline-gold"
+                style={{ flex: 1, padding: '11px', fontSize: '0.9rem', borderRadius: '8px' }}
+                disabled={isDeleting}
+                onClick={() => setDeleteModal(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-danger"
+                style={{
+                  flex: 1.2,
+                  padding: '11px',
+                  fontSize: '0.9rem',
+                  borderRadius: '8px',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  boxShadow: '0 4px 15px rgba(220,53,69,0.3)',
+                  cursor: isDeleting ? 'not-allowed' : 'pointer',
+                }}
+                disabled={isDeleting}
+                onClick={async () => {
+                  try {
+                    setIsDeleting(true);
+                    await deleteModal.onConfirm();
+                  } finally {
+                    setIsDeleting(false);
+                    setDeleteModal(null);
+                  }
+                }}
+              >
+                {isDeleting ? (
+                  <>
+                    <i className="fas fa-spinner fa-spin" /> Deleting...
+                  </>
+                ) : (
+                  <>
+                    <i className="fas fa-trash-alt" /> Confirm Delete
+                  </>
+                )}
               </button>
             </div>
           </div>
