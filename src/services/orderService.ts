@@ -26,6 +26,14 @@ export interface NotificationResponse {
   };
 }
 
+export const DELETED_ORDER_NUMBERS = [
+  'Brybos-V2086',
+  'Brybos-TEST03',
+  'Brybos-TEST02',
+  'Brybos-TEST01',
+  '#1004',
+];
+
 export const orderService = {
   /**
    * Generates a guaranteed unique customer-facing Brybos order number: Brybos-XXXXXX
@@ -87,7 +95,9 @@ export const orderService = {
       const { data, error } = await query;
       if (error) throw error;
 
-      const mapped: Order[] = (data || []).map((o: any) => ({
+      const mapped: Order[] = (data || [])
+        .filter((o: any) => !DELETED_ORDER_NUMBERS.includes(o.order_number) && !DELETED_ORDER_NUMBERS.includes(o.id))
+        .map((o: any) => ({
         id: o.id,
         orderNumber: o.order_number || generateBrybosOrderId(),
         customerId: o.customer_id,

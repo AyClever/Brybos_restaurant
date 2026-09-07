@@ -3,6 +3,7 @@ import { useApp, OrderStatus, Rider, SalesRep, MenuItem } from '../store/AppCont
 import { menuService } from '../services/menuService';
 import { authService, customerStore, LocalCustomerAccount } from '../services/authService';
 import { isSupabaseConfigured } from '../lib/supabase';
+import AdminFleetMap from '../components/AdminFleetMap';
 
 type AdminSection = 'dashboard' | 'orders' | 'customers' | 'salesreps' | 'riders' | 'menu' | 'tracking' | 'payments' | 'notifications';
 
@@ -15,7 +16,23 @@ interface SidebarItem {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  return <span className={`badge badge-${status}`}>{status.replace('onway', 'On Way')}</span>;
+  const norm = (status || '').toLowerCase();
+  if (norm === 'delivered') {
+    return (
+      <span className="badge badge-delivered" style={{ background: 'rgba(40,167,69,0.18)', color: '#28a745', border: '1px solid rgba(40,167,69,0.4)', fontWeight: 700 }}>
+        ✓ Delivered
+      </span>
+    );
+  }
+  if (norm === 'onway') {
+    return (
+      <span className="badge badge-onway" style={{ background: 'rgba(255,193,7,0.18)', color: '#ffc107', border: '1px solid rgba(255,193,7,0.4)', fontWeight: 700 }}>
+        🏍️ On The Way
+      </span>
+    );
+  }
+  const label = status === 'onway' ? 'On Way' : status.charAt(0).toUpperCase() + status.slice(1);
+  return <span className={`badge badge-${status}`}>{label}</span>;
 }
 
 function StatCard({ icon, value, label, color, change }: { icon: string; value: string; label: string; color: string; change?: string }) {
@@ -444,7 +461,7 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
                   <table className="data-table">
                     <thead>
                       <tr>
-                        <th>Order</th><th>Customer</th><th>Total</th><th>Payment</th><th>Status</th><th>Time</th>
+                        <th>Order</th><th>Customer</th><th>Total</th><th>Status</th><th>Time</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -453,7 +470,6 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
                           <td style={{ color: 'var(--gold)', fontWeight: 700 }}>{o.orderNumber}</td>
                           <td>{o.customerName}</td>
                           <td>₦{o.total.toLocaleString()}</td>
-                          <td><StatusBadge status={o.paymentStatus} /></td>
                           <td><StatusBadge status={o.status} /></td>
                           <td style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.82rem' }}>
                             {new Date(o.createdAt).toLocaleTimeString()}
@@ -513,7 +529,7 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
                   <table className="data-table">
                     <thead>
                       <tr>
-                        <th>Order</th><th>Customer</th><th>Items</th><th>Total</th><th>Payment</th><th>Status</th><th>Actions</th>
+                        <th>Order</th><th>Customer</th><th>Items</th><th>Total</th><th>Status</th><th>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -526,7 +542,6 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
                           </td>
                           <td>{o.items.length} item(s)</td>
                           <td style={{ fontWeight: 700 }}>₦{o.total.toLocaleString()}</td>
-                          <td><StatusBadge status={o.paymentStatus} /></td>
                           <td><StatusBadge status={o.status} /></td>
                           <td>
                             <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
@@ -1131,95 +1146,22 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
             <div className="tab-panel">
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '1.5rem', alignItems: 'start' }}>
                 <div>
-                  <div className="map-container" style={{ minHeight: '440px', position: 'relative', overflow: 'hidden' }}>
-                    <div className="map-overlay-grid" />
-
-                    {/* Restaurant HQ Pin */}
-                    <div style={{
-                      position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-                      zIndex: 3, textAlign: 'center',
-                    }}>
-                      <div style={{
-                        width: '42px', height: '42px', borderRadius: '50%', background: 'var(--gold)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--dark)',
-                        fontSize: '1.2rem', margin: '0 auto', boxShadow: '0 0 20px rgba(200,155,60,0.6)',
-                        border: '3px solid #fff',
-                      }}>
-                        🍽️
-                      </div>
-                      <div style={{
-                        background: 'rgba(20,20,20,0.85)', padding: '3px 8px', borderRadius: '4px',
-                        fontSize: '0.72rem', color: 'var(--gold)', fontWeight: 700, marginTop: '4px',
-                        border: '1px solid rgba(200,155,60,0.4)',
-                      }}>
-                        BRYBOS HQ
-                      </div>
-                    </div>
-
-                    {/* Active Riders on Map */}
-                    {state.riders.map((r, i) => {
-                      const offsets = [
-                        { top: '35%', left: '42%' },
-                        { top: '65%', left: '60%' },
-                        { top: '40%', left: '68%' },
-                        { top: '70%', left: '35%' },
-                      ];
-                      const pos = offsets[i % offsets.length];
-                      return (
-                        <div
-                          key={r.id}
-                          style={{
-                            position: 'absolute', top: pos.top, left: pos.left,
-                            zIndex: 4, transform: 'translate(-50%, -50%)', textAlign: 'center',
-                          }}
-                        >
-                          <div style={{
-                            width: '36px', height: '36px', borderRadius: '50%',
-                            background: r.availability === 'busy' ? 'var(--gold)' : 'var(--success)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: '1rem', boxShadow: `0 0 16px ${r.availability === 'busy' ? 'var(--gold)' : 'var(--success)'}`,
-                            border: '2px solid #fff', animation: r.availability === 'busy' ? 'pulse 2s infinite' : 'none',
-                          }}>
-                            🏍️
-                          </div>
-                          <div style={{
-                            background: 'rgba(20,20,20,0.9)', padding: '2px 6px', borderRadius: '4px',
-                            fontSize: '0.68rem', color: '#fff', fontWeight: 600, marginTop: '3px',
-                            whiteSpace: 'nowrap', border: '1px solid rgba(255,255,255,0.1)',
-                          }}>
-                            {r.name.split(' ')[0]} ({r.availability})
-                          </div>
-                        </div>
-                      );
-                    })}
-
+                  <div style={{ position: 'relative' }}>
+                    <AdminFleetMap riders={state.riders} />
                     {/* Map Header Status Overlay */}
                     <div style={{
-                      position: 'absolute', top: 16, left: 16, zIndex: 5,
-                      background: 'rgba(20,20,20,0.85)', padding: '8px 14px', borderRadius: '10px',
-                      border: '1px solid rgba(200,155,60,0.25)', display: 'flex', alignItems: 'center', gap: '10px',
+                      position: 'absolute', top: 16, left: 16, zIndex: 500,
+                      background: 'rgba(20,20,20,0.88)', padding: '8px 14px', borderRadius: '10px',
+                      border: '1px solid rgba(200,155,60,0.3)', display: 'flex', alignItems: 'center', gap: '10px',
+                      boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
                     }}>
-                      <span style={{ fontSize: '0.85rem' }}>🛰️</span>
+                      <span style={{ fontSize: '0.9rem' }}>🛰️</span>
                       <div>
-                        <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--gold)' }}>Live Fleet Telemetry</div>
-                        <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.5)' }}>
-                          {state.riders.filter(r => r.availability === 'busy').length} active deliveries • Realtime GPS Sync
+                        <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--gold)' }}>Live Fleet Operations Map</div>
+                        <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.7)' }}>
+                          {state.riders.filter(r => r.availability === 'busy').length} active deliveries • Supabase GPS Sync
                         </div>
                       </div>
-                    </div>
-
-                    <div style={{
-                      position: 'absolute', bottom: 16, right: 16, zIndex: 5,
-                    }}>
-                      <button
-                        className="btn-outline-gold"
-                        style={{ padding: '6px 12px', fontSize: '0.75rem', background: 'rgba(20,20,20,0.9)' }}
-                        onClick={() => {
-                          addNotification('info', 'GPS Ping Broadcasted', 'Simulated GPS pulse sent to all active dispatch riders.');
-                        }}
-                      >
-                        <i className="fas fa-crosshairs" style={{ marginRight: '6px' }} /> Ping All Riders
-                      </button>
                     </div>
                   </div>
                 </div>

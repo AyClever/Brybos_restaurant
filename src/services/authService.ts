@@ -67,41 +67,68 @@ const updateStaffCredential = (email: string, updates: Partial<StaffCredential>)
   }
 };
 
+export const AUTH_STORAGE_KEY = 'brybos_auth_user';
+
+export const getLocalAuthUser = (): User | null => {
+  try {
+    const s = localStorage.getItem(AUTH_STORAGE_KEY);
+    return s ? JSON.parse(s) : null;
+  } catch {
+    return null;
+  }
+};
+
+export const setLocalAuthUser = (user: User | null) => {
+  try {
+    if (user) {
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
+    } else {
+      localStorage.removeItem(AUTH_STORAGE_KEY);
+    }
+  } catch (e) {
+    console.warn('Could not persist auth user to localStorage:', e);
+  }
+};
+
 export const authService = {
   getStoredStaff,
   saveStaffCredential,
   removeStaffCredential,
   updateStaffCredential,
+  getLocalAuthUser,
+  setLocalAuthUser,
 
   async getCurrentSessionUser(): Promise<User | null> {
-    if (!isSupabaseConfigured) return null;
+    const cached = getLocalAuthUser();
+    if (!isSupabaseConfigured) return cached;
     try {
       const { data: { session }, error } = await supabase.auth.getSession();
-      if (error || !session?.user) return null;
-
-      const profile = await this.getProfile(session.user.id);
-      if (profile) {
-        return {
-          id: profile.id,
-          name: profile.full_name,
-          email: profile.email,
-          phone: profile.phone || '',
-          role: profile.role,
-          avatar_url: profile.avatar_url,
-        };
+      if (error || !session?.user) {
+        // Return persisted user (supports staff/admin logins or offline resilience)
+        return cached;
       }
 
-      // Fallback from user metadata if profile query fails
-      return {
+      const profile = await this.getProfile(session.user.id);
+      const user: User = profile ? {
+        id: profile.id,
+        name: profile.full_name,
+        email: profile.email,
+        phone: profile.phone || '',
+        role: profile.role,
+        avatar_url: profile.avatar_url,
+      } : {
         id: session.user.id,
         name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User',
         email: session.user.email || '',
         phone: session.user.user_metadata?.phone || '',
         role: (session.user.user_metadata?.role as UserRole) || 'customer',
       };
+
+      setLocalAuthUser(user);
+      return user;
     } catch (err) {
-      console.error('Failed to get Supabase session user:', err);
-      return null;
+      console.warn('Supabase getSession fallback to cache:', err);
+      return cached;
     }
   },
 
@@ -307,16 +334,15 @@ export const authService = {
 
           if (data?.user) {
             const profile = await this.getProfile(data.user.id);
-            return {
-              user: {
-                id: data.user.id,
-                name: profile?.full_name || 'Ayomipo Fayose',
-                email: data.user.email || 'fayoseayomipo170@gmail.com',
-                phone: profile?.phone || '08000000001',
-                role: 'admin',
-              },
-              error: null,
+            const user: User = {
+              id: data.user.id,
+              name: profile?.full_name || 'Ayomipo Fayose',
+              email: data.user.email || 'fayoseayomipo170@gmail.com',
+              phone: profile?.phone || '08000000001',
+              role: 'admin',
             };
+            setLocalAuthUser(user);
+            return { user, error: null };
           } else if (error) {
             // Auto register in Supabase Auth if not yet created
             const { data: signUpData } = await supabase.auth.signUp({
@@ -341,6 +367,7 @@ export const authService = {
           console.warn('Supabase admin login fallback:', err);
         }
       }
+      setLocalAuthUser(adminUser);
       return { user: adminUser, error: null };
     }
 
@@ -363,14 +390,16 @@ export const authService = {
       return false;
     });
     if (staffMatch) {
+      const user: User = {
+        id: `staff_${staffMatch.email}`,
+        name: staffMatch.name,
+        email: staffMatch.email,
+        phone: staffMatch.phone,
+        role: staffMatch.role,
+      };
+      setLocalAuthUser(user);
       return {
-        user: {
-          id: `staff_${staffMatch.email}`,
-          name: staffMatch.name,
-          email: staffMatch.email,
-          phone: staffMatch.phone,
-          role: staffMatch.role,
-        },
+        user,
         error: null,
       };
     }
@@ -378,14 +407,16 @@ export const authService = {
     // 3. CHECK REGISTERED CUSTOMERS (Instant & always works without Supabase rate limits)
     const localCust = customerStore.find(normEmail, password);
     if (localCust) {
+      const user: User = {
+        id: localCust.id,
+        name: localCust.name,
+        email: localCust.email,
+        phone: localCust.phone || '',
+        role: 'customer',
+      };
+      setLocalAuthUser(user);
       return {
-        user: {
-          id: localCust.id,
-          name: localCust.name,
-          email: localCust.email,
-          phone: localCust.phone || '',
-          role: 'customer',
-        },
+        user,
         error: null,
       };
     }
@@ -402,14 +433,16 @@ export const authService = {
         if (!data.user) return { user: null, error: 'User not found.' };
 
         const profile = await this.getProfile(data.user.id);
+        const user: User = {
+          id: data.user.id,
+          name: profile?.full_name || data.user.user_metadata?.full_name || data.user.email?.split('@')[0] || 'User',
+          email: data.user.email || '',
+          phone: profile?.phone || data.user.user_metadata?.phone || '',
+          role: (profile?.role || data.user.user_metadata?.role || 'customer') as UserRole,
+        };
+        setLocalAuthUser(user);
         return {
-          user: {
-            id: data.user.id,
-            name: profile?.full_name || data.user.user_metadata?.full_name || data.user.email?.split('@')[0] || 'User',
-            email: data.user.email || '',
-            phone: profile?.phone || data.user.user_metadata?.phone || '',
-            role: (profile?.role || data.user.user_metadata?.role || 'customer') as UserRole,
-          },
+          user,
           error: null,
         };
       } catch (err: any) {
@@ -421,6 +454,7 @@ export const authService = {
   },
 
   async signOut(): Promise<void> {
+    setLocalAuthUser(null);
     if (isSupabaseConfigured) {
       try {
         await supabase.auth.signOut();
@@ -432,18 +466,21 @@ export const authService = {
 
   onAuthStateChange(callback: (user: User | null) => void) {
     if (!isSupabaseConfigured) return () => {};
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (!session?.user) {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_OUT') {
+        setLocalAuthUser(null);
         callback(null);
-      } else {
+      } else if (session?.user) {
         const profile = await this.getProfile(session.user.id);
-        callback({
+        const user: User = {
           id: session.user.id,
           name: profile?.full_name || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User',
           email: session.user.email || '',
           phone: profile?.phone || session.user.user_metadata?.phone || '',
           role: (profile?.role || session.user.user_metadata?.role || 'customer') as UserRole,
-        });
+        };
+        setLocalAuthUser(user);
+        callback(user);
       }
     });
     return () => subscription.unsubscribe();

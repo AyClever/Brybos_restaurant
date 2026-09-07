@@ -151,4 +151,33 @@ export const riderService = {
       supabase.removeChannel(channel);
     };
   },
+
+  subscribeToSingleRider(riderId: string | number, callback: (rider: Partial<Rider>) => void) {
+    if (!isSupabaseConfigured) return () => {};
+    const channel = supabase
+      .channel(`rider-live-${riderId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'riders',
+          filter: `id=eq.${riderId}`,
+        },
+        (payload: any) => {
+          if (payload?.new) {
+            callback({
+              lat: payload.new.lat ? Number(payload.new.lat) : undefined,
+              lng: payload.new.lng ? Number(payload.new.lng) : undefined,
+              availability: payload.new.availability,
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  },
 };

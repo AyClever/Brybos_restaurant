@@ -205,10 +205,17 @@ const demoOrders: Order[] = [
   },
 ];
 
+const EXCLUDED_ORDER_NUMBERS = ['Brybos-V2086', 'Brybos-TEST03', 'Brybos-TEST02', 'Brybos-TEST01', '#1004'];
+
+const loadStoredOrders = (): Order[] => {
+  const stored = loadStoredData<Order[]>('brybos_orders', isSupabaseConfigured ? [] : demoOrders);
+  return (stored || []).filter(o => !EXCLUDED_ORDER_NUMBERS.includes(o.orderNumber) && !EXCLUDED_ORDER_NUMBERS.includes(o.id));
+};
+
 const initialState: AppState = {
-  user: null,
+  user: authService.getLocalAuthUser(),
   cart: [],
-  orders: loadStoredData<Order[]>('brybos_orders', isSupabaseConfigured ? [] : demoOrders),
+  orders: loadStoredOrders(),
   menuItems: loadStoredData<MenuItem[]>('brybos_menu_items', initialMenuItems),
   riders: loadStoredData<Rider[]>('brybos_riders', initialRiders),
   salesReps: loadStoredData<SalesRep[]>('brybos_sales_reps', initialSalesReps),
@@ -241,6 +248,7 @@ const initialState: AppState = {
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'SET_USER':
+      authService.setLocalAuthUser(action.payload);
       return { ...state, user: action.payload };
 
     case 'SET_SUPABASE_LIVE':
@@ -249,8 +257,13 @@ function reducer(state: AppState, action: Action): AppState {
     case 'SET_MENU_ITEMS':
       return { ...state, menuItems: action.payload };
 
-    case 'SET_ORDERS':
-      return { ...state, orders: action.payload };
+    case 'SET_ORDERS': {
+      const sanitizedOrders = action.payload.filter(
+        o => !EXCLUDED_ORDER_NUMBERS.includes(o.orderNumber) && !EXCLUDED_ORDER_NUMBERS.includes(o.id)
+      );
+      saveStoredData('brybos_orders', sanitizedOrders);
+      return { ...state, orders: sanitizedOrders };
+    }
 
     case 'SET_RIDERS':
       return { ...state, riders: action.payload };

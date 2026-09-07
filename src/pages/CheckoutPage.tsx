@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useApp, Order, OrderStatus } from '../store/AppContext';
-import { orderService, NotificationResponse } from '../services/orderService';
+import { orderService } from '../services/orderService';
 
 interface CheckoutPageProps {
   onNavigate: (page: string) => void;
@@ -13,7 +13,6 @@ export default function CheckoutPage({ onNavigate }: CheckoutPageProps) {
   const [paymentDone, setPaymentDone] = useState(false);
   const [orderId, setOrderId] = useState('');
   const [createdOrder, setCreatedOrder] = useState<Order | null>(null);
-  const [notificationStatus, setNotificationStatus] = useState<NotificationResponse | null>(null);
 
   const [form, setForm] = useState({
     name: state.user?.name || '',
@@ -82,8 +81,7 @@ export default function CheckoutPage({ onNavigate }: CheckoutPageProps) {
       dispatch({ type: 'CLEAR_CART' });
 
       // 5. Send notifications ONLY after successful Supabase persistence
-      const notifResponse = await orderService.sendOrderNotifications(savedOrder);
-      setNotificationStatus(notifResponse);
+      await orderService.sendOrderNotifications(savedOrder);
 
       addNotification(
         'success',
@@ -186,25 +184,14 @@ export default function CheckoutPage({ onNavigate }: CheckoutPageProps) {
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
               <p style={{ fontWeight: 700, margin: 0, color: 'var(--gold)', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <i className="fas fa-paper-plane" /> Notifications Dispatched
+                <i className="fas fa-paper-plane" /> Order Notifications
               </p>
-              {notificationStatus && (
-                <span style={{ fontSize: '0.75rem', color: notificationStatus.success ? 'var(--success)' : 'var(--gold)', background: 'rgba(255,255,255,0.05)', padding: '2px 8px', borderRadius: '10px' }}>
-                  {notificationStatus.duplicate ? 'Idempotent Sync' : 'Real-time Dispatched'}
-                </span>
-              )}
             </div>
             <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.8)', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ color: 'var(--success)' }}>✓</span> ✉ Confirmation email sent to <strong style={{ color: '#ffffff' }}>{form.email}</strong>
-              {notificationStatus?.email?.provider && (
-                <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)' }}>({notificationStatus.email.provider})</span>
-              )}
             </p>
             <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.8)', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ color: 'var(--success)' }}>✓</span> 📱 SMS & WhatsApp dispatched to <strong style={{ color: '#ffffff' }}>{form.phone}</strong>
-              {notificationStatus?.sms?.provider && (
-                <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)' }}>({notificationStatus.sms.provider})</span>
-              )}
             </p>
             <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.8)', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ color: 'var(--success)' }}>✓</span> 👨‍🍳 Kitchen and sales team notified with ID <strong style={{ color: 'var(--gold)' }}>{order?.orderNumber}</strong>

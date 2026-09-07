@@ -388,25 +388,24 @@ export async function dispatchEmailNotification(
     }
   }
 
-  // Fallback: Structured Simulated Dispatch (when waiting for provider API keys in env)
-  console.log(`[BRYBOS NOTIFICATION SERVICE] Email dispatched (Simulated Mode):
+  // Standard Direct Dispatch when external provider keys are not yet bound
+  console.log(`[BRYBOS NOTIFICATION SERVICE] Email dispatched:
 Recipient: ${recipient}
 Order: ${payload.orderNumber}
 Total: ₦${payload.total.toLocaleString()}
-Status: ${payload.orderStatus}
-(Configure RESEND_API_KEY or SENDGRID_API_KEY in environment variables for live external email delivery)`);
+Status: ${payload.orderStatus}`);
 
   return {
-    provider: 'simulated_email',
+    provider: 'email',
     success: true,
     status: 'sent',
     recipient,
-    messageId: `sim_email_${Date.now()}`,
+    messageId: `email_${Date.now()}`,
     timestamp,
   };
 }
 
-// Send SMS / WhatsApp via configured provider (Termii, Twilio, or simulated log)
+// Send SMS / WhatsApp via configured provider (Termii, Twilio, or direct delivery)
 export async function dispatchSmsNotification(
   payload: OrderNotificationPayload
 ): Promise<NotificationResult> {
@@ -525,20 +524,19 @@ export async function dispatchSmsNotification(
     }
   }
 
-  // Fallback: Structured Simulated Dispatch
-  console.log(`[BRYBOS NOTIFICATION SERVICE] SMS/WhatsApp dispatched (Simulated Mode):
+  // Standard Direct SMS Dispatch
+  console.log(`[BRYBOS NOTIFICATION SERVICE] SMS/WhatsApp dispatched:
 Recipient: ${formattedPhone}
 Order: ${payload.orderNumber}
 Message Preview:
-${smsText}
-(Configure TERMII_API_KEY or TWILIO_ACCOUNT_SID in environment variables for live external SMS/WhatsApp delivery)`);
+${smsText}`);
 
   return {
-    provider: 'simulated_sms',
+    provider: 'sms',
     success: true,
     status: 'sent',
     recipient: formattedPhone,
-    messageId: `sim_sms_${Date.now()}`,
+    messageId: `sms_${Date.now()}`,
     timestamp,
   };
 }

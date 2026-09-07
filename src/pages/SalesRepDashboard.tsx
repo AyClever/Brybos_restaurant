@@ -257,8 +257,7 @@ function OrderActionCard({ order, onConfirm, onApprove, onReject, onPreparing, e
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
             <span style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--gold)' }}>{order.orderNumber}</span>
-            <span className={`badge badge-${order.status}`}>{order.status}</span>
-            <span className={`badge badge-${order.paymentStatus}`}>{order.paymentStatus}</span>
+            <span className={`badge badge-${order.status}`}>{order.status === 'delivered' ? '✓ Delivered' : order.status === 'onway' ? 'On The Way' : order.status}</span>
           </div>
           <div style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)' }}>
             {order.customerName} • {order.items.length} item(s) • <strong style={{ color: 'var(--gold)' }}>₦{order.total.toLocaleString()}</strong>
