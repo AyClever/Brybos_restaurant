@@ -36,6 +36,7 @@ export type {
 
 interface AppState {
   user: User | null;
+  authLoading: boolean;
   cart: CartItem[];
   orders: Order[];
   menuItems: MenuItem[];
@@ -52,6 +53,7 @@ interface AppState {
 
 type Action =
   | { type: 'SET_USER'; payload: User | null }
+  | { type: 'SET_AUTH_LOADING'; payload: boolean }
   | { type: 'SET_MENU_ITEMS'; payload: MenuItem[] }
   | { type: 'SET_ORDERS'; payload: Order[] }
   | { type: 'SET_RIDERS'; payload: Rider[] }
@@ -129,93 +131,31 @@ const initialMenuItems: MenuItem[] = [
 ];
 
 const initialRiders: Rider[] = [
-  { id: 'r1', name: 'Emeka Okafor', email: 'emeka@gmail.com', phone: '08012345678', bikeNumber: 'ABJ-123-DP', licenseNumber: 'LIC-001', availability: 'available', totalDeliveries: 148, rating: 4.8, earnings: 450000, roleNumber: 1, loginPassword: 'riders1' },
-  { id: 'r2', name: 'Chukwuemeka Eze', email: 'eze@gmail.com', phone: '08023456789', bikeNumber: 'LG-456-DP', licenseNumber: 'LIC-002', availability: 'busy', totalDeliveries: 97, rating: 4.6, earnings: 310000, roleNumber: 2, loginPassword: 'riders2' },
-  { id: 'r3', name: 'Babatunde Afolabi', email: 'afolabi@gmail.com', phone: '08034567890', bikeNumber: 'KN-789-DP', licenseNumber: 'LIC-003', availability: 'offline', totalDeliveries: 203, rating: 4.9, earnings: 620000, roleNumber: 3, loginPassword: 'riders3' },
+  { id: 'r1', name: 'Emeka Okafor', email: 'emeka@gmail.com', phone: '08012345678', bikeNumber: 'ABJ-123-DP', licenseNumber: 'LIC-001', availability: 'available', totalDeliveries: 148, rating: 4.8, earnings: 450000, roleNumber: 1 },
+  { id: 'r2', name: 'Chukwuemeka Eze', email: 'eze@gmail.com', phone: '08023456789', bikeNumber: 'LG-456-DP', licenseNumber: 'LIC-002', availability: 'busy', totalDeliveries: 97, rating: 4.6, earnings: 310000, roleNumber: 2 },
+  { id: 'r3', name: 'Babatunde Afolabi', email: 'afolabi@gmail.com', phone: '08034567890', bikeNumber: 'KN-789-DP', licenseNumber: 'LIC-003', availability: 'offline', totalDeliveries: 203, rating: 4.9, earnings: 620000, roleNumber: 3 },
 ];
 
 const initialSalesReps: SalesRep[] = [
-  { id: 's1', name: 'Adaeze Okonkwo', email: 'adaeze@gmail.com', phone: '08011223344', address: 'Lagos, Nigeria', ordersHandled: 312, status: 'active', roleNumber: 1, loginPassword: 'salesrep1' },
-  { id: 's2', name: 'Tunde Bakare', email: 'tunde@gmail.com', phone: '08022334455', address: 'Abuja, Nigeria', ordersHandled: 187, status: 'active', roleNumber: 2, loginPassword: 'salesrep2' },
+  { id: 's1', name: 'Adaeze Okonkwo', email: 'adaeze@gmail.com', phone: '08011223344', address: 'Lagos, Nigeria', ordersHandled: 312, status: 'active', roleNumber: 1 },
+  { id: 's2', name: 'Tunde Bakare', email: 'tunde@gmail.com', phone: '08022334455', address: 'Abuja, Nigeria', ordersHandled: 187, status: 'active', roleNumber: 2 },
 ];
 
-const demoOrders: Order[] = [
-  {
-    id: 'ORD001',
-    orderNumber: '#1001',
-    customerId: 'cust_99',
-    customerName: 'John Adebayo',
-    customerEmail: 'john@email.com',
-    customerPhone: '08055667788',
-    deliveryAddress: '23 Lekki Phase 1, Lagos',
-    landmark: 'Near Shoprite',
-    items: [{ ...initialMenuItems[4], quantity: 2 }, { ...initialMenuItems[12], quantity: 1 }],
-    subtotal: 15000,
-    vat: 1125,
-    deliveryFee: 1500,
-    total: 17625,
-    paymentMethod: 'paystack',
-    paymentStatus: 'paid',
-    status: 'pending',
-    createdAt: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 'ORD002',
-    orderNumber: '#1002',
-    customerId: 'cust_98',
-    customerName: 'Ngozi Eze',
-    customerEmail: 'ngozi@email.com',
-    customerPhone: '08066778899',
-    deliveryAddress: '45 Maitama, Abuja',
-    landmark: 'Near Transcorp Hilton',
-    items: [{ ...initialMenuItems[8], quantity: 1 }, { ...initialMenuItems[9], quantity: 1 }],
-    subtotal: 16000,
-    vat: 1200,
-    deliveryFee: 1500,
-    total: 18700,
-    paymentMethod: 'paystack',
-    paymentStatus: 'paid',
-    status: 'approved',
-    salesRepId: 's1',
-    createdAt: new Date(Date.now() - 1000 * 60 * 20).toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 'ORD003',
-    orderNumber: '#1003',
-    customerId: 'cust_97',
-    customerName: 'Kemi Lawal',
-    customerEmail: 'kemi@email.com',
-    customerPhone: '08077889900',
-    deliveryAddress: '12 GRA, Port Harcourt',
-    landmark: 'Opp. First Bank',
-    items: [{ ...initialMenuItems[5], quantity: 2 }],
-    subtotal: 9000,
-    vat: 675,
-    deliveryFee: 1500,
-    total: 11175,
-    paymentMethod: 'cash',
-    paymentStatus: 'pending',
-    status: 'delivered',
-    riderId: 'r3',
-    riderName: 'Babatunde Afolabi',
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
+export const EXCLUDED_ORDER_NUMBERS = [
+  'Brybos-V2086',
+  'Brybos-TEST03',
+  'Brybos-TEST02',
+  'Brybos-TEST01',
+  '#1004',
+  '1004',
+  'ORD004',
 ];
-
-const EXCLUDED_ORDER_NUMBERS = ['Brybos-V2086', 'Brybos-TEST03', 'Brybos-TEST02', 'Brybos-TEST01', '#1004'];
-
-const loadStoredOrders = (): Order[] => {
-  const stored = loadStoredData<Order[]>('brybos_orders', isSupabaseConfigured ? [] : demoOrders);
-  return (stored || []).filter(o => !EXCLUDED_ORDER_NUMBERS.includes(o.orderNumber) && !EXCLUDED_ORDER_NUMBERS.includes(o.id));
-};
 
 const initialState: AppState = {
-  user: authService.getLocalAuthUser(),
+  user: null,
+  authLoading: true,
   cart: [],
-  orders: loadStoredOrders(),
+  orders: [],
   menuItems: loadStoredData<MenuItem[]>('brybos_menu_items', initialMenuItems),
   riders: loadStoredData<Rider[]>('brybos_riders', initialRiders),
   salesReps: loadStoredData<SalesRep[]>('brybos_sales_reps', initialSalesReps),
@@ -223,17 +163,9 @@ const initialState: AppState = {
     {
       id: 'N1',
       type: 'success',
-      title: 'New Order Received',
-      message: 'Order #1001 from John Adebayo — ₦17,625',
-      timestamp: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
-      read: false,
-    },
-    {
-      id: 'N2',
-      type: 'info',
-      title: 'Rider Assigned',
-      message: 'Emeka Okafor assigned to Order #1002',
-      timestamp: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
+      title: 'Welcome to BRYBOS',
+      message: 'Explore our gourmet Nigerian menu & quick delivery service',
+      timestamp: new Date().toISOString(),
       read: false,
     },
   ],
@@ -241,15 +173,17 @@ const initialState: AppState = {
   currentPage: 'home',
   coupon: null,
   couponCode: '',
-  unreadNotifications: 2,
+  unreadNotifications: 1,
   isSupabaseLive: false,
 };
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'SET_USER':
-      authService.setLocalAuthUser(action.payload);
       return { ...state, user: action.payload };
+
+    case 'SET_AUTH_LOADING':
+      return { ...state, authLoading: action.payload };
 
     case 'SET_SUPABASE_LIVE':
       return { ...state, isSupabaseLive: action.payload };
@@ -259,9 +193,11 @@ function reducer(state: AppState, action: Action): AppState {
 
     case 'SET_ORDERS': {
       const sanitizedOrders = action.payload.filter(
-        o => !EXCLUDED_ORDER_NUMBERS.includes(o.orderNumber) && !EXCLUDED_ORDER_NUMBERS.includes(o.id)
+        o =>
+          !EXCLUDED_ORDER_NUMBERS.includes(o.orderNumber) &&
+          !EXCLUDED_ORDER_NUMBERS.includes(o.id) &&
+          !o.orderNumber?.includes('TEST')
       );
-      saveStoredData('brybos_orders', sanitizedOrders);
       return { ...state, orders: sanitizedOrders };
     }
 
@@ -312,7 +248,6 @@ function reducer(state: AppState, action: Action): AppState {
 
     case 'PLACE_ORDER': {
       const newOrders = [action.payload, ...state.orders];
-      saveStoredData('brybos_orders', newOrders);
       return {
         ...state,
         orders: newOrders,
@@ -333,7 +268,6 @@ function reducer(state: AppState, action: Action): AppState {
             }
           : o
       );
-      saveStoredData('brybos_orders', newOrders);
       return {
         ...state,
         orders: newOrders,
@@ -344,7 +278,6 @@ function reducer(state: AppState, action: Action): AppState {
       const newOrders: Order[] = state.orders.map(o =>
         o.id === action.payload ? { ...o, status: 'cancelled' as OrderStatus, updatedAt: new Date().toISOString() } : o
       );
-      saveStoredData('brybos_orders', newOrders);
       return {
         ...state,
         orders: newOrders,
@@ -353,7 +286,6 @@ function reducer(state: AppState, action: Action): AppState {
 
     case 'DELETE_ORDER': {
       const newOrders = state.orders.filter(o => o.id !== action.payload);
-      saveStoredData('brybos_orders', newOrders);
       return {
         ...state,
         orders: newOrders,
@@ -564,44 +496,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             break;
           case 'UPDATE_RIDER':
             riderService.updateRider(action.payload.id, action.payload).catch(err => console.warn('Rider update sync warning:', err));
-            if (action.payload.email) {
-              authService.updateStaffCredential(action.payload.email, {
-                name: action.payload.name,
-                phone: action.payload.phone,
-              });
-            }
             break;
           case 'UPDATE_RIDER_STATUS':
             riderService.updateRider(action.payload.id, { availability: action.payload.availability }).catch(err => console.warn('Rider status sync warning:', err));
             break;
-          case 'DELETE_RIDER': {
+          case 'DELETE_RIDER':
             riderService.deleteRider(action.payload).catch(err => console.warn('Rider delete sync warning:', err));
-            const riderMatch = state.riders.find(r => String(r.id) === String(action.payload));
-            if (riderMatch?.email) {
-              authService.removeStaffCredential(riderMatch.email);
-            }
             break;
-          }
           case 'ADD_SALES_REP':
             salesRepService.createSalesRep(action.payload).catch(err => console.warn('Sales rep create sync warning:', err));
             break;
           case 'UPDATE_SALES_REP':
             salesRepService.updateSalesRep(action.payload.id, action.payload).catch(err => console.warn('Sales rep update sync warning:', err));
-            if (action.payload.email) {
-              authService.updateStaffCredential(action.payload.email, {
-                name: action.payload.name,
-                phone: action.payload.phone,
-              });
-            }
             break;
-          case 'DELETE_SALES_REP': {
+          case 'DELETE_SALES_REP':
             salesRepService.deleteSalesRep(action.payload).catch(err => console.warn('Sales rep delete sync warning:', err));
-            const repMatch = state.salesReps.find(s => String(s.id) === String(action.payload));
-            if (repMatch?.email) {
-              authService.removeStaffCredential(repMatch.email);
-            }
             break;
-          }
           case 'MARK_NOTIF_READ':
             notificationService.markAsRead(action.payload).catch(err => console.warn('Mark notif read sync warning:', err));
             break;
@@ -613,7 +523,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         console.warn('Action sync error:', err);
       }
     }
-  }, [state.riders, state.salesReps]);
+  }, []);
 
   const refreshData = useCallback(async () => {
     if (!isSupabaseConfigured) return;
@@ -627,11 +537,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         dispatch({ type: 'SET_SUPABASE_LIVE', payload: true });
       }
 
-      // 2. Orders - Supabase is source of truth
+      // 2. Orders - Supabase is single source of truth (no localStorage caching)
       const orderRes = await orderService.getOrders();
       if (orderRes.data) {
         dispatch({ type: 'SET_ORDERS', payload: orderRes.data });
-        saveStoredData('brybos_orders', orderRes.data);
       }
 
       // 3. Riders
@@ -662,16 +571,38 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // Initial authentication & data load
   useEffect(() => {
-    // Check current auth session
-    authService.getCurrentSessionUser().then(user => {
-      if (user) {
-        dispatch({ type: 'SET_USER', payload: user });
-      }
-    });
+    // Purge any legacy plain-text stores from browser immediately
+    try {
+      localStorage.removeItem('brybos_orders');
+      localStorage.removeItem('brybos_registered_staff');
+      localStorage.removeItem('brybos_registered_customers');
+      localStorage.removeItem('brybos_auth_user');
+    } catch {}
 
-    // Listen for auth changes
+    let isMounted = true;
+
+    // Check current auth session via Supabase Auth as single source of truth
+    authService
+      .getCurrentSessionUser()
+      .then(user => {
+        if (isMounted) {
+          dispatch({ type: 'SET_USER', payload: user });
+          dispatch({ type: 'SET_AUTH_LOADING', payload: false });
+        }
+      })
+      .catch(err => {
+        console.warn('Session verification notice:', err);
+        if (isMounted) {
+          dispatch({ type: 'SET_AUTH_LOADING', payload: false });
+        }
+      });
+
+    // Listen for auth changes from Supabase
     const unsubAuth = authService.onAuthStateChange(user => {
-      dispatch({ type: 'SET_USER', payload: user });
+      if (isMounted) {
+        dispatch({ type: 'SET_USER', payload: user });
+        dispatch({ type: 'SET_AUTH_LOADING', payload: false });
+      }
     });
 
     // Initial data fetch if Supabase configured
@@ -690,14 +621,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       });
 
       return () => {
+        isMounted = false;
         unsubAuth();
         unsubOrders();
         unsubRiders();
         unsubNotifs();
       };
+    } else {
+      dispatch({ type: 'SET_AUTH_LOADING', payload: false });
     }
 
     return () => {
+      isMounted = false;
       unsubAuth();
     };
   }, [refreshData]);

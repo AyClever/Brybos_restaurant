@@ -41,6 +41,7 @@ export type OrderStatus =
   | 'pending'
   | 'confirmed'
   | 'preparing'
+  | 'ready'
   | 'approved'
   | 'assigned'
   | 'onway'
@@ -85,7 +86,6 @@ export interface Rider {
   rating: number;
   earnings: number;
   roleNumber?: number;
-  loginPassword?: string;
   lat?: number;
   lng?: number;
 }
@@ -100,7 +100,6 @@ export interface SalesRep {
   ordersHandled: number;
   status: 'active' | 'inactive';
   roleNumber?: number;
-  loginPassword?: string;
 }
 
 export interface Payment {

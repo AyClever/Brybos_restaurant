@@ -19,10 +19,26 @@ export default function AuthPage({ mode, onNavigate }: AuthPageProps) {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resendStatus, setResendStatus] = useState<string | null>(null);
+
+  const handleResend = async () => {
+    if (!form.email) return;
+    setResending(true);
+    setResendStatus(null);
+    const res = await authService.resendConfirmationEmail(form.email);
+    setResending(false);
+    if (res.success) {
+      setResendStatus('Confirmation link sent! Please check your email inbox and spam folder.');
+    } else {
+      setResendStatus(res.error || 'Failed to send confirmation link.');
+    }
+  };
 
   const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
     setError('');
+    setResendStatus(null);
   };
 
   const handleLogin = async () => {
@@ -144,10 +160,39 @@ export default function AuthPage({ mode, onNavigate }: AuthPageProps) {
           {error && (
             <div style={{
               background: 'rgba(220,53,69,0.1)', border: '1px solid rgba(220,53,69,0.3)',
-              borderRadius: '8px', padding: '10px 14px', marginBottom: '1rem',
+              borderRadius: '8px', padding: '12px 14px', marginBottom: '1rem',
               color: 'var(--danger)', fontSize: '0.85rem', fontWeight: 600,
             }}>
-              <i className="fas fa-exclamation-circle" style={{ marginRight: '8px' }} />{error}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <i className="fas fa-exclamation-circle" />
+                <span>{error}</span>
+              </div>
+              {error.toLowerCase().includes('email not confirmed') && (
+                <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid rgba(220,53,69,0.2)' }}>
+                  <button
+                    type="button"
+                    onClick={handleResend}
+                    disabled={resending || !form.email}
+                    style={{
+                      background: 'var(--gold)',
+                      color: 'var(--dark)',
+                      border: 'none',
+                      padding: '4px 10px',
+                      borderRadius: '4px',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {resending ? 'Sending...' : '✉️ Resend Confirmation Email'}
+                  </button>
+                  {resendStatus && (
+                    <div style={{ marginTop: '6px', fontSize: '0.78rem', color: 'var(--success)', fontWeight: 500 }}>
+                      {resendStatus}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

@@ -28,13 +28,15 @@ export default function LiveRiderTrackingModal({ order, onClose }: LiveRiderTrac
   const destLng = BRYBOS_HQ[1] + 0.025 + ((order.orderNumber.charCodeAt(0) % 20) * 0.001);
   const destinationCoords: [number, number] = [destLat, destLng];
 
+  const isDelivered = order.status === 'delivered';
+
   // Rider position state
-  const initialRiderLat = assignedRider?.lat || BRYBOS_HQ[0] + (destLat - BRYBOS_HQ[0]) * 0.45;
-  const initialRiderLng = assignedRider?.lng || BRYBOS_HQ[1] + (destLng - BRYBOS_HQ[1]) * 0.45;
+  const initialRiderLat = isDelivered ? destLat : (assignedRider?.lat || BRYBOS_HQ[0] + (destLat - BRYBOS_HQ[0]) * 0.45);
+  const initialRiderLng = isDelivered ? destLng : (assignedRider?.lng || BRYBOS_HQ[1] + (destLng - BRYBOS_HQ[1]) * 0.45);
 
   const [riderCoords, setRiderCoords] = useState<[number, number]>([initialRiderLat, initialRiderLng]);
-  const [lastUpdate, setLastUpdate] = useState<string>('Just now');
-  const [etaMinutes, setEtaMinutes] = useState<number>(14);
+  const [lastUpdate, setLastUpdate] = useState<string>(isDelivered ? 'Delivery Completed' : 'Just now');
+  const [etaMinutes, setEtaMinutes] = useState<number>(isDelivered ? 0 : 14);
 
   // Initialize Leaflet Map
   useEffect(() => {
@@ -157,9 +159,9 @@ export default function LiveRiderTrackingModal({ order, onClose }: LiveRiderTrac
     };
   }, []);
 
-  // Subscribe to real-time updates for THIS SPECIFIC rider from Supabase
+  // Real-time tracking updates - strictly disabled if order is delivered
   useEffect(() => {
-    if (!order.riderId) return;
+    if (isDelivered || !order.riderId) return;
 
     const unsub = riderService.subscribeToSingleRider(order.riderId, (updated) => {
       if (updated.lat && updated.lng) {
@@ -177,10 +179,12 @@ export default function LiveRiderTrackingModal({ order, onClose }: LiveRiderTrac
     return () => {
       if (unsub) unsub();
     };
-  }, [order.riderId]);
+  }, [order.riderId, isDelivered]);
 
-  // Subtle real-time progress simulation when active GPS is moving towards customer
+  // Subtle real-time progress simulation when active GPS is moving towards customer (stops if delivered)
   useEffect(() => {
+    if (isDelivered) return;
+
     const timer = setInterval(() => {
       setRiderCoords((prev) => {
         // Gently interpolate towards destination
@@ -204,7 +208,7 @@ export default function LiveRiderTrackingModal({ order, onClose }: LiveRiderTrac
     }, 8000);
 
     return () => clearInterval(timer);
-  }, [destinationCoords]);
+  }, [destinationCoords, isDelivered]);
 
   return (
     <div
@@ -373,14 +377,14 @@ export default function LiveRiderTrackingModal({ order, onClose }: LiveRiderTrac
               }}
             >
               <div style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.5)', textTransform: 'uppercase' }}>
-                Estimated Delivery Arrival
+                {isDelivered ? 'Delivery Status' : 'Estimated Delivery Arrival'}
               </div>
-              <div style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--gold)', marginTop: '2px' }}>
-                ~{etaMinutes} mins
+              <div style={{ fontSize: '1.2rem', fontWeight: 800, color: isDelivered ? 'var(--success)' : 'var(--gold)', marginTop: '2px' }}>
+                {isDelivered ? 'Delivered' : `~${etaMinutes} mins`}
               </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--success)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: 'var(--success)' }} />
-                Live GPS Active • Updated {lastUpdate}
+              <div style={{ fontSize: '0.75rem', color: isDelivered ? 'rgba(255,255,255,0.7)' : 'var(--success)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: isDelivered ? 'var(--success)' : 'var(--success)' }} />
+                {isDelivered ? 'Rider has arrived • Tracking Ended' : `Live GPS Active • Updated ${lastUpdate}`}
               </div>
             </div>
 

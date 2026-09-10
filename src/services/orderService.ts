@@ -32,6 +32,8 @@ export const DELETED_ORDER_NUMBERS = [
   'Brybos-TEST02',
   'Brybos-TEST01',
   '#1004',
+  '1004',
+  'ORD004',
 ];
 
 export const orderService = {

@@ -1,7 +1,7 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useApp, OrderStatus, Rider, SalesRep, MenuItem } from '../store/AppContext';
 import { menuService } from '../services/menuService';
-import { authService, customerStore, LocalCustomerAccount } from '../services/authService';
+import { authService, Profile } from '../services/authService';
 import { isSupabaseConfigured } from '../lib/supabase';
 import AdminFleetMap from '../components/AdminFleetMap';
 
@@ -108,28 +108,33 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
   } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Customer Management
-  const [registeredCustomers, setRegisteredCustomers] = useState<LocalCustomerAccount[]>(() => customerStore.getAll());
+  // Customer Management - Powered by Supabase profiles table
+  const [registeredCustomers, setRegisteredCustomers] = useState<Profile[]>([]);
   const [editingCustomerEmail, setEditingCustomerEmail] = useState<string | null>(null);
   const [customerEditForm, setCustomerEditForm] = useState({ name: '', phone: '' });
 
-  const refreshCustomers = () => {
-    setRegisteredCustomers(customerStore.getAll());
-  };
+  const refreshCustomers = useCallback(async () => {
+    const customers = await authService.getCustomers();
+    setRegisteredCustomers(customers);
+  }, []);
 
-  const handleStartEditCustomer = (c: LocalCustomerAccount) => {
+  useEffect(() => {
+    refreshCustomers();
+  }, [refreshCustomers]);
+
+  const handleStartEditCustomer = (c: Profile) => {
     setEditingCustomerEmail(c.email);
-    setCustomerEditForm({ name: c.name, phone: c.phone || '' });
+    setCustomerEditForm({ name: c.full_name || '', phone: c.phone || '' });
   };
 
-  const handleSaveCustomer = (email: string) => {
-    customerStore.update(email, {
-      name: customerEditForm.name.trim(),
+  const handleSaveCustomer = async (email: string) => {
+    await authService.updateCustomer(email, {
+      full_name: customerEditForm.name.trim(),
       phone: customerEditForm.phone.trim(),
     });
-    setRegisteredCustomers(customerStore.getAll());
+    await refreshCustomers();
     setEditingCustomerEmail(null);
-    addNotification('success', 'Customer Updated', `${customerEditForm.name}'s profile updated and saved to database`);
+    addNotification('success', 'Customer Updated', `${customerEditForm.name}'s profile updated in database`);
   };
 
   const handleDeleteCustomer = (email: string, name: string) => {
@@ -140,8 +145,8 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
       itemSubtitle: `Email: ${email}`,
       warningNote: 'This will permanently remove this customer account and profile from the database.',
       onConfirm: async () => {
-        customerStore.delete(email);
-        setRegisteredCustomers(customerStore.getAll());
+        await authService.deleteCustomer(email);
+        await refreshCustomers();
         addNotification('warning', 'Customer Removed', `Customer ${name} deleted from database`);
       },
     });
@@ -218,7 +223,6 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
         rating: 5,
         earnings: 0,
         roleNumber,
-        loginPassword: generatedPassword,
       };
 
       dispatch({ type: 'ADD_RIDER', payload: newRider });
@@ -273,7 +277,6 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
         ordersHandled: 0,
         status: 'active',
         roleNumber,
-        loginPassword: generatedPassword,
       };
 
       dispatch({ type: 'ADD_SALES_REP', payload: newRep });
@@ -693,7 +696,6 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
               <div className="grid-3">
                 {state.riders.map((rider, idx) => {
                   const roleNum = rider.roleNumber || idx + 1;
-                  const loginPass = rider.loginPassword || `riders${roleNum}`;
                   const riderEmail = rider.email || `${rider.name.toLowerCase().split(' ')[0]}@gmail.com`;
 
                   return (
@@ -707,7 +709,7 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
                       <div style={{ fontWeight: 700, fontSize: '1rem' }}>{rider.name}</div>
                       <span className={`badge badge-${rider.availability}`}>{rider.availability}</span>
 
-                      {/* Login Credentials Box */}
+                      {/* Account Box */}
                       <div style={{
                         width: '100%',
                         background: 'rgba(0,0,0,0.35)',
@@ -719,19 +721,19 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
                         textAlign: 'left',
                       }}>
                         <div style={{ color: 'rgba(255,255,255,0.5)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          Gmail: <span style={{ color: 'var(--white)' }}>{riderEmail}</span>
+                          Email: <span style={{ color: 'var(--white)' }}>{riderEmail}</span>
                         </div>
                         <div style={{ color: 'rgba(255,255,255,0.5)', marginTop: '2px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span>Pass: <code style={{ color: 'var(--gold)' }}>{loginPass}</code></span>
+                          <span style={{ color: 'var(--gold)', fontSize: '0.72rem' }}>🔒 Supabase Auth</span>
                           <button
                             type="button"
                             onClick={() => {
-                              navigator.clipboard.writeText(`Email: ${riderEmail}\nPassword: ${loginPass}\nPortal: /rider`);
-                              addNotification('info', 'Credentials Copied', `Copied login for ${rider.name}`);
+                              navigator.clipboard.writeText(`Email: ${riderEmail}\nPortal: /rider`);
+                              addNotification('info', 'Details Copied', `Copied login email for ${rider.name}`);
                             }}
                             style={{ background: 'none', border: 'none', color: 'var(--gold)', cursor: 'pointer', fontSize: '0.72rem', padding: 0 }}
                           >
-                            📋 Copy
+                            📋 Copy Email
                           </button>
                         </div>
                       </div>
@@ -883,8 +885,8 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
                   <thead>
                     <tr>
                       <th>Name</th>
-                      <th>Login Gmail</th>
-                      <th>Password</th>
+                      <th>Email</th>
+                      <th>Security</th>
                       <th>Phone</th>
                       <th>Orders Handled</th>
                       <th>Status</th>
@@ -894,7 +896,6 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
                   <tbody>
                     {state.salesReps.map((rep, idx) => {
                       const roleNum = rep.roleNumber || idx + 1;
-                      const loginPass = rep.loginPassword || `salesrep${roleNum}`;
 
                       return (
                         <tr key={rep.id}>
@@ -912,16 +913,16 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
                           </td>
                           <td>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <code style={{ color: 'var(--gold)', fontSize: '0.82rem', background: 'rgba(200,155,60,0.1)', padding: '2px 6px', borderRadius: '4px' }}>
-                                {loginPass}
-                              </code>
+                              <span style={{ color: 'var(--gold)', fontSize: '0.78rem', background: 'rgba(200,155,60,0.1)', padding: '2px 8px', borderRadius: '4px', border: '1px solid rgba(200,155,60,0.2)' }}>
+                                🔒 Supabase Auth
+                              </span>
                               <button
                                 type="button"
                                 onClick={() => {
-                                  navigator.clipboard.writeText(`Email: ${rep.email}\nPassword: ${loginPass}\nPortal: /salesrep`);
-                                  addNotification('info', 'Credentials Copied', `Copied login for ${rep.name}`);
+                                  navigator.clipboard.writeText(`Email: ${rep.email}\nPortal: /salesrep`);
+                                  addNotification('info', 'Details Copied', `Copied login email for ${rep.name}`);
                                 }}
-                                title="Copy login info"
+                                title="Copy login email"
                                 style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: '0.75rem' }}
                               >
                                 📋
@@ -1337,9 +1338,9 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
                               ) : (
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600 }}>
                                   <div className="avatar" style={{ width: 30, height: 30, fontSize: '0.85rem' }}>
-                                    {cust.name.charAt(0).toUpperCase()}
+                                    {(cust.full_name || cust.email || 'C').charAt(0).toUpperCase()}
                                   </div>
-                                  {cust.name}
+                                  {cust.full_name || cust.email.split('@')[0]}
                                 </div>
                               )}
                             </td>
@@ -1358,7 +1359,7 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
                               )}
                             </td>
                             <td style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.4)' }}>
-                              {cust.createdAt ? new Date(cust.createdAt).toLocaleDateString('en-NG') : 'Recent'}
+                              {cust.created_at ? new Date(cust.created_at).toLocaleDateString('en-NG') : 'Recent'}
                             </td>
                             <td>
                               <div style={{ display: 'flex', gap: '6px' }}>
@@ -1392,7 +1393,7 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
                                       className="btn-danger"
                                       style={{ padding: '4px 8px', fontSize: '0.78rem', cursor: 'pointer' }}
                                       title="Delete customer record"
-                                      onClick={() => handleDeleteCustomer(cust.email, cust.name)}
+                                      onClick={() => handleDeleteCustomer(cust.email, cust.full_name || cust.email)}
                                     >
                                       <i className="fas fa-trash" />
                                     </button>

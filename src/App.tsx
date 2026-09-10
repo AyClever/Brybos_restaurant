@@ -107,7 +107,15 @@ function AppContent() {
 
       {/* Admin Portal: /admin */}
       {currentPage === 'admin' && (
-        state.user?.role === 'admin' ? (
+        state.authLoading ? (
+          <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--dark)' }}>
+            <div style={{ textAlign: 'center' }}>
+              <div className="spinner" style={{ width: 42, height: 42, margin: '0 auto 1.25rem' }} />
+              <div style={{ color: 'var(--gold)', fontSize: '0.95rem', fontWeight: 600, letterSpacing: '0.5px' }}>Restoring Secure Session...</div>
+              <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.8rem', marginTop: '0.5rem' }}>Authenticating with Supabase</div>
+            </div>
+          </div>
+        ) : state.user?.role === 'admin' ? (
           <AdminDashboard onNavigate={navigate} />
         ) : (
           <StaffLoginPage targetRole="admin" onNavigate={navigate} />
@@ -116,7 +124,15 @@ function AppContent() {
 
       {/* Sales Rep Portal: /salesrep */}
       {currentPage === 'salesrep' && (
-        state.user?.role === 'sales_rep' ? (
+        state.authLoading ? (
+          <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--dark)' }}>
+            <div style={{ textAlign: 'center' }}>
+              <div className="spinner" style={{ width: 42, height: 42, margin: '0 auto 1.25rem' }} />
+              <div style={{ color: 'var(--gold)', fontSize: '0.95rem', fontWeight: 600, letterSpacing: '0.5px' }}>Restoring Secure Session...</div>
+              <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.8rem', marginTop: '0.5rem' }}>Authenticating with Supabase</div>
+            </div>
+          </div>
+        ) : state.user?.role === 'sales_rep' ? (
           <SalesRepDashboard onNavigate={navigate} />
         ) : (
           <StaffLoginPage targetRole="sales_rep" onNavigate={navigate} />
@@ -125,7 +141,15 @@ function AppContent() {
 
       {/* Rider Portal: /rider */}
       {currentPage === 'rider' && (
-        state.user?.role === 'rider' ? (
+        state.authLoading ? (
+          <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--dark)' }}>
+            <div style={{ textAlign: 'center' }}>
+              <div className="spinner" style={{ width: 42, height: 42, margin: '0 auto 1.25rem' }} />
+              <div style={{ color: 'var(--gold)', fontSize: '0.95rem', fontWeight: 600, letterSpacing: '0.5px' }}>Restoring Secure Session...</div>
+              <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.8rem', marginTop: '0.5rem' }}>Authenticating with Supabase</div>
+            </div>
+          </div>
+        ) : state.user?.role === 'rider' ? (
           <RiderDashboard onNavigate={navigate} />
         ) : (
           <StaffLoginPage targetRole="rider" onNavigate={navigate} />

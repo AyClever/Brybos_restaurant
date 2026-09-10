@@ -9,24 +9,24 @@ export default function SalesRepDashboard({ onNavigate }: { onNavigate: (p: stri
 
   const myOrders = state.orders;
   const newOrders = myOrders.filter(o => o.status === 'pending');
-  const processingOrders = myOrders.filter(o => ['confirmed', 'preparing', 'approved'].includes(o.status));
-  const readyOrders = myOrders.filter(o => o.status === 'approved' && !o.riderId);
+  const processingOrders = myOrders.filter(o => ['confirmed', 'preparing', 'ready', 'approved'].includes(o.status));
+  const readyOrders = myOrders.filter(o => (o.status === 'ready' || o.status === 'approved') && !o.riderId);
   const historyOrders = myOrders.filter(o => ['assigned', 'onway', 'delivered', 'cancelled'].includes(o.status));
 
   const handleApprove = (orderId: string) => {
-    dispatch({ type: 'UPDATE_ORDER_STATUS', payload: { id: orderId, status: 'approved' } });
+    dispatch({ type: 'UPDATE_ORDER_STATUS', payload: { id: orderId, status: 'ready' } });
     const order = myOrders.find(o => o.id === orderId);
-    addNotification('success', 'Order Approved', `Order ${order?.orderNumber} approved. Notifying kitchen!`);
+    addNotification('success', 'Order Ready for Pickup', `Order ${order?.orderNumber || ''} is ready. Dispatch riders notified!`);
   };
 
   const handleConfirm = (orderId: string) => {
     dispatch({ type: 'UPDATE_ORDER_STATUS', payload: { id: orderId, status: 'confirmed' } });
-    addNotification('info', 'Order Confirmed', `Order confirmed and sent to kitchen`);
+    addNotification('info', 'Order Confirmed', `Order confirmed and queued`);
   };
 
   const handlePreparing = (orderId: string) => {
     dispatch({ type: 'UPDATE_ORDER_STATUS', payload: { id: orderId, status: 'preparing' } });
-    addNotification('info', 'Kitchen Notified', `Kitchen is now preparing the order`);
+    addNotification('info', 'Kitchen Preparing', `Kitchen is actively preparing the order`);
   };
 
   const handleReject = (orderId: string) => {

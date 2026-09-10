@@ -2,12 +2,13 @@ import { useState } from 'react';
 import { useApp, Order, OrderStatus } from '../store/AppContext';
 import LiveRiderTrackingModal from '../components/LiveRiderTrackingModal';
 
-const STATUS_STEPS: OrderStatus[] = ['pending', 'confirmed', 'preparing', 'approved', 'assigned', 'onway', 'delivered'];
+const STATUS_STEPS: OrderStatus[] = ['pending', 'confirmed', 'preparing', 'ready', 'assigned', 'onway', 'delivered'];
 
 const STATUS_LABELS: Record<OrderStatus, string> = {
   pending: 'Pending',
   confirmed: 'Confirmed',
   preparing: 'Preparing',
+  ready: 'Ready for Pickup',
   approved: 'Approved',
   assigned: 'Rider Assigned',
   onway: 'On The Way',
@@ -19,6 +20,7 @@ const STATUS_ICONS: Record<OrderStatus, string> = {
   pending: '⏳',
   confirmed: '✅',
   preparing: '👨‍🍳',
+  ready: '🍱',
   approved: '👍',
   assigned: '🏍️',
   onway: '🛣️',
@@ -36,9 +38,11 @@ function OrderCard({
   onTrack: (order: Order) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const stepIdx = STATUS_STEPS.indexOf(order.status);
+  // Map approved status to confirmed index in the pipeline
+  const normalizedStatus = order.status === 'approved' ? 'confirmed' : order.status;
+  const stepIdx = STATUS_STEPS.indexOf(normalizedStatus as OrderStatus);
   const isDelivered = order.status === 'delivered';
-  const isOnWay = order.status === 'onway';
+  const isOnWay = order.status === 'onway' || (order.status === 'assigned' && !!order.riderName);
 
   return (
     <div style={{

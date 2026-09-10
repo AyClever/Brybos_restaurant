@@ -31,6 +31,24 @@ export default function StaffLoginPage({ targetRole, onNavigate }: StaffLoginPag
     ? '🧑‍💼 Order Operations & Kitchen Dispatch'
     : '🏍️ Delivery Fleet & Logistics';
 
+  const [resending, setResending] = useState(false);
+  const [resendStatus, setResendStatus] = useState<string | null>(null);
+
+  const isEmailNotConfirmed = error.toLowerCase().includes('email not confirmed');
+
+  const handleResendConfirmation = async () => {
+    if (!email) return;
+    setResending(true);
+    setResendStatus(null);
+    const res = await authService.resendConfirmationEmail(email);
+    setResending(false);
+    if (res.success) {
+      setResendStatus('Confirmation email sent! Please check your inbox or spam folder.');
+    } else {
+      setResendStatus(res.error || 'Unable to send confirmation email.');
+    }
+  };
+
   const handleLogin = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!email || !password) {
@@ -40,6 +58,7 @@ export default function StaffLoginPage({ targetRole, onNavigate }: StaffLoginPag
 
     setLoading(true);
     setError('');
+    setResendStatus(null);
 
     const { user, error: loginError } = await authService.signIn({
       email,
@@ -138,16 +157,45 @@ export default function StaffLoginPage({ targetRole, onNavigate }: StaffLoginPag
               background: 'rgba(220,53,69,0.12)',
               border: '1px solid rgba(220,53,69,0.3)',
               borderRadius: '10px',
-              padding: '10px 14px',
+              padding: '12px 14px',
               marginBottom: '1.25rem',
               color: 'var(--danger)',
               fontSize: '0.85rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
             }}>
-              <i className="fas fa-exclamation-circle" />
-              <span>{error}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600 }}>
+                <i className="fas fa-exclamation-circle" />
+                <span>{error}</span>
+              </div>
+
+              {isEmailNotConfirmed && (
+                <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid rgba(220,53,69,0.2)' }}>
+                  <p style={{ margin: '0 0 8px 0', fontSize: '0.8rem', color: 'rgba(255,255,255,0.75)', lineHeight: 1.4 }}>
+                    Supabase requires your email to be confirmed before sign in. You can send a new confirmation link or auto-confirm in your Supabase dashboard.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleResendConfirmation}
+                    disabled={resending || !email}
+                    style={{
+                      background: 'var(--gold)',
+                      color: 'var(--dark)',
+                      border: 'none',
+                      padding: '5px 12px',
+                      borderRadius: '6px',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {resending ? 'Sending link...' : '✉️ Resend Confirmation Email'}
+                  </button>
+                  {resendStatus && (
+                    <div style={{ marginTop: '6px', fontSize: '0.78rem', color: 'var(--success)', fontWeight: 600 }}>
+                      {resendStatus}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

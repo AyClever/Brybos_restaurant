@@ -14,7 +14,7 @@ export default function RiderDashboard({ onNavigate }: { onNavigate: (p: string)
   const myAssignedOrders = state.orders.filter(
     o => (riderId && String(o.riderId) === String(riderId)) || o.riderName === state.user?.name
   );
-  const availableOrders = state.orders.filter(o => o.status === 'approved' && !o.riderId);
+  const availableOrders = state.orders.filter(o => (o.status === 'ready' || o.status === 'approved') && !o.riderId);
   const activeOrders = myAssignedOrders.filter(o => ['assigned', 'onway'].includes(o.status));
   const historyOrders = myAssignedOrders.filter(o => ['delivered', 'cancelled'].includes(o.status));
 
