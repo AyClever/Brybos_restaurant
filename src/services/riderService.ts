@@ -45,7 +45,9 @@ export const riderService = {
       const { data, error } = await supabase
         .from('riders')
         .insert({
+          profile_id: (rider as any).profileId,
           name: rider.name,
+          email: rider.email,
           phone: rider.phone,
           bike_number: rider.bikeNumber,
           license_number: rider.licenseNumber,
@@ -61,7 +63,9 @@ export const riderService = {
       return {
         data: {
           id: data.id,
+          profileId: data.profile_id,
           name: data.name,
+          email: data.email,
           phone: data.phone,
           bikeNumber: data.bike_number,
           licenseNumber: data.license_number,
@@ -83,6 +87,7 @@ export const riderService = {
     try {
       const payload: any = {};
       if (updates.name !== undefined) payload.name = updates.name;
+      if (updates.email !== undefined) payload.email = updates.email;
       if (updates.phone !== undefined) payload.phone = updates.phone;
       if (updates.bikeNumber !== undefined) payload.bike_number = updates.bikeNumber;
       if (updates.licenseNumber !== undefined) payload.license_number = updates.licenseNumber;

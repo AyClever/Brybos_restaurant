@@ -251,11 +251,58 @@ CREATE TRIGGER on_auth_user_created
 -- ROW LEVEL SECURITY (RLS) POLICIES
 -- ==============================================================================
 
--- Helper functions for RLS checks
+-- Helper functions for RLS checks (Non-recursive and safe)
 CREATE OR REPLACE FUNCTION public.current_user_role()
 RETURNS TEXT AS $$
-  SELECT role FROM public.profiles WHERE id = auth.uid();
-$$ LANGUAGE sql STABLE SECURITY DEFINER;
+DECLARE
+  jwt_role TEXT;
+  profile_role TEXT;
+BEGIN
+  jwt_role := COALESCE(
+    auth.jwt() -> 'user_metadata' ->> 'role',
+    auth.jwt() -> 'app_metadata' ->> 'role'
+  );
+  IF jwt_role IS NOT NULL AND jwt_role <> '' THEN
+    RETURN jwt_role;
+  END IF;
+
+  SELECT p.role INTO profile_role
+  FROM public.profiles p
+  WHERE p.id = auth.uid();
+
+  RETURN COALESCE(profile_role, 'customer');
+EXCEPTION
+  WHEN OTHERS THEN
+    RETURN 'customer';
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public;
+
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS BOOLEAN AS $$
+DECLARE
+  v_role TEXT;
+BEGIN
+  IF auth.role() = 'service_role' THEN
+    RETURN TRUE;
+  END IF;
+
+  v_role := COALESCE(
+    auth.jwt() -> 'user_metadata' ->> 'role',
+    auth.jwt() -> 'app_metadata' ->> 'role'
+  );
+  IF v_role = 'admin' THEN
+    RETURN TRUE;
+  END IF;
+
+  RETURN EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id = auth.uid() AND role = 'admin'
+  );
+EXCEPTION
+  WHEN OTHERS THEN
+    RETURN FALSE;
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public;
 
 -- Enable RLS on all tables
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
@@ -271,16 +318,38 @@ ALTER TABLE public.rider_locations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.restaurant_settings ENABLE ROW LEVEL SECURITY;
 
 -- 1. PROFILES POLICIES
--- Users can view their own profile; Admins, Sales Reps, and Riders can view profiles according to duties
-CREATE POLICY "Users can view own profile" ON public.profiles
-  FOR SELECT USING (auth.uid() = id OR public.current_user_role() IN ('admin', 'sales_rep'));
+CREATE POLICY "Profiles select policy" ON public.profiles
+  FOR SELECT USING (
+    auth.uid() = id OR
+    public.is_admin() OR
+    public.current_user_role() IN ('admin', 'sales_rep') OR
+    auth.role() = 'service_role'
+  );
 
-CREATE POLICY "Users can update own profile" ON public.profiles
-  FOR UPDATE USING (auth.uid() = id)
-  WITH CHECK (auth.uid() = id AND role = (SELECT role FROM public.profiles WHERE id = auth.uid()));
+CREATE POLICY "Profiles insert policy" ON public.profiles
+  FOR INSERT WITH CHECK (
+    auth.uid() = id OR
+    public.is_admin() OR
+    auth.role() = 'service_role'
+  );
 
-CREATE POLICY "Admins have full access to profiles" ON public.profiles
-  FOR ALL USING (public.current_user_role() = 'admin');
+CREATE POLICY "Profiles update policy" ON public.profiles
+  FOR UPDATE USING (
+    auth.uid() = id OR
+    public.is_admin() OR
+    auth.role() = 'service_role'
+  )
+  WITH CHECK (
+    auth.uid() = id OR
+    public.is_admin() OR
+    auth.role() = 'service_role'
+  );
+
+CREATE POLICY "Profiles delete policy" ON public.profiles
+  FOR DELETE USING (
+    public.is_admin() OR
+    auth.role() = 'service_role'
+  );
 
 -- 2. MENU ITEMS & CATEGORIES POLICIES
 -- Anyone can view available menu items; Admins can manage all menu items

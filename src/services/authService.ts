@@ -292,7 +292,9 @@ export const authService = {
   /**
    * Registers a staff member (Sales Rep or Rider) in Supabase.
    * Called by an authenticated Administrator.
-   * Uses an isolated Supabase client to avoid disturbing the admin's active session.
+   * Uses a secure server-side method (API endpoint / Supabase Edge Function with service-role key)
+   * to create the Auth user and auto-confirm email, with rollback on database failure,
+   * completely preserving the active admin session.
    */
   async registerStaff(params: {
     name: string;
@@ -304,16 +306,27 @@ export const authService = {
     bikeNumber?: string;
     licenseNumber?: string;
     address?: string;
-  }): Promise<{ user: User | null; error: string | null }> {
+  }): Promise<{ user: User | null; rider?: any; salesRep?: any; error: string | null }> {
     const email = params.email.trim().toLowerCase();
     const password = params.password.trim();
     const name = params.name.trim();
     const phone = params.phone.trim();
 
+    if (!name || name.length < 2) {
+      return { user: null, error: 'Staff name is required (minimum 2 characters).' };
+    }
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return { user: null, error: 'A valid email address is required.' };
+    }
+    if (!password || password.length < 6) {
+      return { user: null, error: 'Password must be at least 6 characters for Supabase Auth.' };
+    }
+
     if (!isSupabaseConfigured) {
+      const mockId = `staff_${Date.now()}`;
       return {
         user: {
-          id: `staff_${Date.now()}`,
+          id: mockId,
           name,
           email,
           phone,
@@ -323,8 +336,91 @@ export const authService = {
       };
     }
 
+    // Retrieve active administrator session token to authorize the request
+    let adminToken = '';
     try {
-      // 1. Create Supabase Auth user without modifying the admin's active session
+      const { data: { session } } = await supabase.auth.getSession();
+      adminToken = session?.access_token || '';
+    } catch (tokenErr) {
+      console.warn('Could not retrieve admin token:', tokenErr);
+    }
+
+    // METHOD 1: Supabase Edge Function with Service Role Key (supabase.functions.invoke('register-staff'))
+    try {
+      const { data, error: edgeError } = await supabase.functions.invoke('register-staff', {
+        body: params,
+        headers: adminToken ? { Authorization: `Bearer ${adminToken}` } : {},
+      });
+
+      if (!edgeError && data?.success) {
+        return {
+          user: data.user,
+          rider: data.rider,
+          salesRep: data.salesRep,
+          error: null,
+        };
+      }
+
+      // If the Edge function responded with a business error (e.g. duplicate email, invalid credentials, 403)
+      if (data && !data.success && data.error) {
+        return { user: null, error: data.error };
+      }
+
+      if (edgeError) {
+        const edgeMessage = edgeError.message || '';
+        const isUnavailable =
+          edgeMessage.toLowerCase().includes('failed to send a request') ||
+          edgeMessage.toLowerCase().includes('not found') ||
+          edgeMessage.toLowerCase().includes('relay error') ||
+          edgeMessage.toLowerCase().includes('functions fetch error') ||
+          edgeMessage.toLowerCase().includes('500') ||
+          edgeMessage.toLowerCase().includes('404');
+
+        if (!isUnavailable && edgeMessage) {
+          return { user: null, error: edgeMessage };
+        }
+      }
+    } catch (edgeCallErr) {
+      console.warn('Supabase Edge Function invoke error, trying server API endpoint...', edgeCallErr);
+    }
+
+    // METHOD 2: Secure Server-side API endpoint (/api/admin/register-staff)
+    try {
+      const apiResponse = await fetch('/api/admin/register-staff', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {}),
+        },
+        body: JSON.stringify(params),
+      });
+
+      if (apiResponse.status !== 404) {
+        const json = await apiResponse.json().catch(() => ({}));
+        if (apiResponse.ok && json.success) {
+          return {
+            user: json.user,
+            rider: json.rider,
+            salesRep: json.salesRep,
+            error: null,
+          };
+        }
+
+        // If the server explicitly returned a business error (e.g. duplicate email, 403, 400)
+        if (json.error) {
+          if (typeof json.error === 'string' && json.error.includes('SUPABASE_SERVICE_ROLE_KEY is not configured')) {
+            console.warn('SUPABASE_SERVICE_ROLE_KEY not configured on server, falling back to authenticated client RPC...');
+          } else {
+            return { user: null, error: json.error };
+          }
+        }
+      }
+    } catch (apiErr) {
+      console.warn('Server API /api/admin/register-staff unavailable, proceeding to authenticated RPC...', apiErr);
+    }
+
+    // METHOD 3: Client-side Isolated Supabase Client + Authenticated Database RPC Fallback
+    try {
       const isolatedClient = createIsolatedSupabaseClient();
       const { data, error } = await isolatedClient.auth.signUp({
         email,
@@ -332,6 +428,7 @@ export const authService = {
         options: {
           data: {
             full_name: name,
+            name,
             phone,
             role: params.role,
           },
@@ -339,52 +436,157 @@ export const authService = {
       });
 
       if (error) {
+        if (
+          error.message.toLowerCase().includes('already') ||
+          error.message.toLowerCase().includes('duplicate') ||
+          error.message.toLowerCase().includes('exists')
+        ) {
+          return {
+            user: null,
+            error: `An account with email "${email}" is already registered in Supabase Auth. Please use a unique email.`,
+          };
+        }
         return { user: null, error: error.message };
       }
 
       if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
         return {
           user: null,
-          error: `An account with ${email} is already registered in Supabase Auth. Please use a unique email or reset the password.`,
+          error: `An account with email "${email}" is already registered in Supabase Auth. Please use a unique email.`,
         };
       }
 
       const newUserId = data.user?.id || `staff_${Date.now()}`;
 
-      // 2. Ensure profile exists in profiles table with correct role
-      await supabase.from('profiles').upsert({
-        id: newUserId,
-        full_name: name,
-        email,
-        phone,
-        role: params.role,
-        status: 'active',
-        updated_at: new Date().toISOString(),
-      });
-
-      // 3. Upsert into riders or sales_reps table
-      if (params.role === 'rider') {
-        await supabase.from('riders').upsert({
-          profile_id: newUserId,
-          name,
-          phone,
-          bike_number: params.bikeNumber || `BRY-${100 + params.roleNumber}`,
-          license_number: params.licenseNumber || `LIC-00${params.roleNumber}`,
-          availability: 'available',
-          total_deliveries: 0,
-          rating: 5.0,
-          earnings: 0,
+      // 1. Try atomic PostgreSQL RPC `register_staff_profile` (SECURITY DEFINER with admin check)
+      try {
+        const { data: rpcRes, error: rpcErr } = await supabase.rpc('register_staff_profile', {
+          p_user_id: newUserId,
+          p_name: name,
+          p_email: email,
+          p_phone: phone,
+          p_role: params.role,
+          p_bike_number: params.bikeNumber || `BRY-${100 + (params.roleNumber || 1)}`,
+          p_license_number: params.licenseNumber || `LIC-00${params.roleNumber || 1}`,
+          p_address: params.address || 'Lagos, Nigeria',
+          p_role_number: params.roleNumber || 1,
         });
-      } else if (params.role === 'sales_rep') {
-        await supabase.from('sales_reps').upsert({
-          profile_id: newUserId,
-          name,
+
+        if (!rpcErr && rpcRes?.success) {
+          return {
+            user: rpcRes.user || {
+              id: newUserId,
+              name,
+              email,
+              phone,
+              role: params.role,
+            },
+            rider: rpcRes.rider || null,
+            salesRep: rpcRes.sales_rep || null,
+            error: null,
+          };
+        }
+
+        if (rpcErr && rpcErr.message?.includes('Forbidden')) {
+          return {
+            user: null,
+            error: 'Forbidden: Only administrators can register staff members.',
+          };
+        }
+      } catch (rpcCallErr) {
+        console.warn('RPC register_staff_profile not executed, using direct table upsert:', rpcCallErr);
+      }
+
+      // 2. Direct table upsert fallback
+      const { error: profileError } = await supabase.from('profiles').upsert(
+        {
+          id: newUserId,
+          full_name: name,
           email,
           phone,
-          address: params.address || 'Lagos, Nigeria',
-          orders_handled: 0,
+          role: params.role,
           status: 'active',
-        });
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'id' }
+      );
+
+      if (profileError) {
+        // Verify if profile was automatically created by DB trigger handle_new_auth_user
+        const { data: existingProfile } = await supabase
+          .from('profiles')
+          .select('id, role')
+          .eq('id', newUserId)
+          .maybeSingle();
+
+        if (!existingProfile) {
+          console.error('Profile upsert failed during fallback:', profileError);
+          return {
+            user: null,
+            error: `Failed to create profile: ${profileError.message}. Please verify administrator database permissions.`,
+          };
+        }
+      }
+
+      // 3. Insert/Upsert into riders or sales_reps
+      let savedRider: any = null;
+      let savedSalesRep: any = null;
+
+      if (params.role === 'rider') {
+        const { data: rData, error: rError } = await supabase
+          .from('riders')
+          .upsert(
+            {
+              profile_id: newUserId,
+              name,
+              email,
+              phone,
+              bike_number: params.bikeNumber || `BRY-${100 + (params.roleNumber || 1)}`,
+              license_number: params.licenseNumber || `LIC-00${params.roleNumber || 1}`,
+              availability: 'available',
+              total_deliveries: 0,
+              rating: 5.0,
+              earnings: 0,
+            },
+            { onConflict: 'profile_id' }
+          )
+          .select()
+          .maybeSingle();
+
+        if (rError) {
+          console.error('Riders insert failed:', rError);
+          return {
+            user: null,
+            error: `Failed to create dispatch rider record: ${rError.message}.`,
+          };
+        }
+        savedRider = rData;
+      } else if (params.role === 'sales_rep') {
+        const { data: sData, error: sError } = await supabase
+          .from('sales_reps')
+          .upsert(
+            {
+              profile_id: newUserId,
+              name,
+              email,
+              phone,
+              address: params.address || 'Lagos, Nigeria',
+              orders_handled: 0,
+              status: 'active',
+            },
+            { onConflict: 'profile_id' }
+          )
+          .select()
+          .maybeSingle();
+
+        if (sError) {
+          console.error('Sales rep insert failed:', sError);
+          return {
+            user: null,
+            error: `Failed to create sales representative record: ${sError.message}.`,
+          };
+        }
+        savedSalesRep = sData;
       }
 
       return {
@@ -395,6 +597,8 @@ export const authService = {
           phone,
           role: params.role,
         },
+        rider: savedRider,
+        salesRep: savedSalesRep,
         error: null,
       };
     } catch (err: any) {

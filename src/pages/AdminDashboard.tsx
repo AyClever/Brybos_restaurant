@@ -193,7 +193,12 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
     }
 
     const cleanName = riderForm.name.trim();
-    const riderEmail = (riderForm.email.trim() || `${cleanName.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`).toLowerCase();
+    const riderEmail = (riderForm.email.trim() || `${cleanName.toLowerCase().replace(/[^a-z0-9]/g, '')}@brybos.com`).toLowerCase();
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(riderEmail)) {
+      addNotification('warning', 'Invalid Email', 'Please enter a valid email address for the rider.');
+      return;
+    }
 
     if (editRiderId) {
       const existing = state.riders.find(r => r.id === editRiderId)!;
@@ -233,14 +238,15 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
         return;
       }
 
-      const newUserId = regRes.user?.id || `rider_${Date.now()}`;
+      const newUserId = String(regRes.user?.id || `rider_${Date.now()}`);
       const newRider: Rider = {
-        id: newUserId,
+        id: regRes.rider?.id || newUserId,
+        profileId: newUserId,
         name: cleanName,
         email: riderEmail,
         phone: riderForm.phone,
-        bikeNumber: riderForm.bikeNumber || `BRY-${100 + roleNumber}`,
-        licenseNumber: riderForm.licenseNumber || `LIC-00${roleNumber}`,
+        bikeNumber: regRes.rider?.bike_number || riderForm.bikeNumber || `BRY-${100 + roleNumber}`,
+        licenseNumber: regRes.rider?.license_number || riderForm.licenseNumber || `LIC-00${roleNumber}`,
         availability: 'available',
         totalDeliveries: 0,
         rating: 5,
@@ -275,6 +281,11 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
 
     const cleanName = repForm.name.trim();
     const repEmail = repForm.email.trim().toLowerCase();
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(repEmail)) {
+      addNotification('warning', 'Invalid Email', 'Please enter a valid email address for the sales representative.');
+      return;
+    }
 
     if (editRepId) {
       const existing = state.salesReps.find(r => r.id === editRepId)!;
@@ -313,9 +324,10 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
         return;
       }
 
-      const newUserId = regRes.user?.id || `rep_${Date.now()}`;
+      const newUserId = String(regRes.user?.id || `rep_${Date.now()}`);
       const newRep: SalesRep = {
-        id: newUserId,
+        id: regRes.salesRep?.id || newUserId,
+        profileId: newUserId,
         name: cleanName,
         email: repEmail,
         phone: repForm.phone || '08000000000',

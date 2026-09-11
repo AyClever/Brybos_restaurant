@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useApp } from '../store/AppContext';
 import { authService } from '../services/authService';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 interface StaffLoginPageProps {
   targetRole: 'admin' | 'sales_rep' | 'rider';
@@ -74,13 +75,25 @@ export default function StaffLoginPage({ targetRole, onNavigate }: StaffLoginPag
 
     const effectiveUser = { ...user };
 
-    // Role check verification with fallback to registered staff list in state
+    // Role check verification with fallback to registered staff list in state or database
     if (targetRole === 'admin' && effectiveUser.role !== 'admin') {
       setError('This account does not have Administrator privileges.');
       return;
     }
     if (targetRole === 'sales_rep' && effectiveUser.role !== 'sales_rep') {
-      const isKnownRep = state.salesReps.some(r => r.email?.trim().toLowerCase() === effectiveUser.email?.trim().toLowerCase());
+      let isKnownRep = state.salesReps.some(r => r.email?.trim().toLowerCase() === effectiveUser.email?.trim().toLowerCase());
+      if (!isKnownRep && isSupabaseConfigured) {
+        try {
+          const { data: dbRep } = await supabase
+            .from('sales_reps')
+            .select('id, profile_id, email')
+            .or(`profile_id.eq.${effectiveUser.id},email.eq.${effectiveUser.email?.toLowerCase()}`)
+            .maybeSingle();
+          if (dbRep) isKnownRep = true;
+        } catch {
+          // ignore error
+        }
+      }
       if (isKnownRep) {
         effectiveUser.role = 'sales_rep';
         authService.updateProfileRole(String(effectiveUser.id), 'sales_rep').catch(console.warn);
@@ -90,7 +103,19 @@ export default function StaffLoginPage({ targetRole, onNavigate }: StaffLoginPag
       }
     }
     if (targetRole === 'rider' && effectiveUser.role !== 'rider') {
-      const isKnownRider = state.riders.some(r => r.email?.trim().toLowerCase() === effectiveUser.email?.trim().toLowerCase());
+      let isKnownRider = state.riders.some(r => r.email?.trim().toLowerCase() === effectiveUser.email?.trim().toLowerCase());
+      if (!isKnownRider && isSupabaseConfigured) {
+        try {
+          const { data: dbRider } = await supabase
+            .from('riders')
+            .select('id, profile_id, email')
+            .or(`profile_id.eq.${effectiveUser.id},email.eq.${effectiveUser.email?.toLowerCase()}`)
+            .maybeSingle();
+          if (dbRider) isKnownRider = true;
+        } catch {
+          // ignore error
+        }
+      }
       if (isKnownRider) {
         effectiveUser.role = 'rider';
         authService.updateProfileRole(String(effectiveUser.id), 'rider').catch(console.warn);

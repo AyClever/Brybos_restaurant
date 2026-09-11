@@ -492,7 +492,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             menuService.deleteMenuItem(action.payload).catch(err => console.warn('Menu item delete sync warning:', err));
             break;
           case 'ADD_RIDER':
-            riderService.createRider(action.payload).catch(err => console.warn('Rider create sync warning:', err));
+            if (!action.payload.profileId && !isUuid(action.payload.id)) {
+              riderService.createRider(action.payload).catch(err => console.warn('Rider create sync warning:', err));
+            }
             break;
           case 'UPDATE_RIDER':
             riderService.updateRider(action.payload.id, action.payload).catch(err => console.warn('Rider update sync warning:', err));
@@ -504,7 +506,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             riderService.deleteRider(action.payload).catch(err => console.warn('Rider delete sync warning:', err));
             break;
           case 'ADD_SALES_REP':
-            salesRepService.createSalesRep(action.payload).catch(err => console.warn('Sales rep create sync warning:', err));
+            if (!action.payload.profileId && !isUuid(action.payload.id)) {
+              salesRepService.createSalesRep(action.payload).catch(err => console.warn('Sales rep create sync warning:', err));
+            }
             break;
           case 'UPDATE_SALES_REP':
             salesRepService.updateSalesRep(action.payload.id, action.payload).catch(err => console.warn('Sales rep update sync warning:', err));

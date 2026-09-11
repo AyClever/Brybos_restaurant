@@ -41,6 +41,7 @@ export const salesRepService = {
       const { data, error } = await supabase
         .from('sales_reps')
         .insert({
+          profile_id: (rep as any).profileId,
           name: rep.name,
           email: rep.email,
           phone: rep.phone,
@@ -55,6 +56,7 @@ export const salesRepService = {
       return {
         data: {
           id: data.id,
+          profileId: data.profile_id,
           name: data.name,
           email: data.email,
           phone: data.phone,
@@ -76,6 +78,7 @@ export const salesRepService = {
       const payload: any = {};
       if (updates.name !== undefined) payload.name = updates.name;
       if (updates.email !== undefined) payload.email = updates.email;
+      if ((updates as any).profileId !== undefined) payload.profile_id = (updates as any).profileId;
       if (updates.phone !== undefined) payload.phone = updates.phone;
       if (updates.address !== undefined) payload.address = updates.address;
       if (updates.ordersHandled !== undefined) payload.orders_handled = updates.ordersHandled;

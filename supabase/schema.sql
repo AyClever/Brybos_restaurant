@@ -265,11 +265,60 @@ CREATE TRIGGER on_auth_user_created_auto_confirm
 -- ROW LEVEL SECURITY (RLS) POLICIES
 -- ==============================================================================
 
--- Helper functions for RLS checks
+-- Helper functions for RLS checks (Non-recursive and safe)
 CREATE OR REPLACE FUNCTION public.current_user_role()
 RETURNS TEXT AS $$
-  SELECT role FROM public.profiles WHERE id = auth.uid();
-$$ LANGUAGE sql STABLE SECURITY DEFINER;
+DECLARE
+  jwt_role TEXT;
+  profile_role TEXT;
+BEGIN
+  -- 1. Inspect JWT claims first to avoid query recursion on public.profiles
+  jwt_role := COALESCE(
+    auth.jwt() -> 'user_metadata' ->> 'role',
+    auth.jwt() -> 'app_metadata' ->> 'role'
+  );
+  IF jwt_role IS NOT NULL AND jwt_role <> '' THEN
+    RETURN jwt_role;
+  END IF;
+
+  -- 2. Direct lookup in profiles table
+  SELECT p.role INTO profile_role
+  FROM public.profiles p
+  WHERE p.id = auth.uid();
+
+  RETURN COALESCE(profile_role, 'customer');
+EXCEPTION
+  WHEN OTHERS THEN
+    RETURN 'customer';
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public;
+
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS BOOLEAN AS $$
+DECLARE
+  v_role TEXT;
+BEGIN
+  IF auth.role() = 'service_role' THEN
+    RETURN TRUE;
+  END IF;
+
+  v_role := COALESCE(
+    auth.jwt() -> 'user_metadata' ->> 'role',
+    auth.jwt() -> 'app_metadata' ->> 'role'
+  );
+  IF v_role = 'admin' THEN
+    RETURN TRUE;
+  END IF;
+
+  RETURN EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id = auth.uid() AND role = 'admin'
+  );
+EXCEPTION
+  WHEN OTHERS THEN
+    RETURN FALSE;
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public;
 
 -- Enable RLS on all tables
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
@@ -285,16 +334,39 @@ ALTER TABLE public.rider_locations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.restaurant_settings ENABLE ROW LEVEL SECURITY;
 
 -- 1. PROFILES POLICIES
--- Users can view their own profile; Admins, Sales Reps, and Riders can view profiles according to duties
-CREATE POLICY "Users can view own profile" ON public.profiles
-  FOR SELECT USING (auth.uid() = id OR public.current_user_role() IN ('admin', 'sales_rep'));
+-- Users can view their own profile; Admins and staff can view profiles; service_role can view all
+CREATE POLICY "Profiles select policy" ON public.profiles
+  FOR SELECT USING (
+    auth.uid() = id OR
+    public.is_admin() OR
+    public.current_user_role() IN ('admin', 'sales_rep') OR
+    auth.role() = 'service_role'
+  );
 
-CREATE POLICY "Users can update own profile" ON public.profiles
-  FOR UPDATE USING (auth.uid() = id)
-  WITH CHECK (auth.uid() = id AND role = (SELECT role FROM public.profiles WHERE id = auth.uid()));
+CREATE POLICY "Profiles insert policy" ON public.profiles
+  FOR INSERT WITH CHECK (
+    auth.uid() = id OR
+    public.is_admin() OR
+    auth.role() = 'service_role'
+  );
 
-CREATE POLICY "Admins have full access to profiles" ON public.profiles
-  FOR ALL USING (public.current_user_role() = 'admin');
+CREATE POLICY "Profiles update policy" ON public.profiles
+  FOR UPDATE USING (
+    auth.uid() = id OR
+    public.is_admin() OR
+    auth.role() = 'service_role'
+  )
+  WITH CHECK (
+    auth.uid() = id OR
+    public.is_admin() OR
+    auth.role() = 'service_role'
+  );
+
+CREATE POLICY "Profiles delete policy" ON public.profiles
+  FOR DELETE USING (
+    public.is_admin() OR
+    auth.role() = 'service_role'
+  );
 
 -- 2. MENU ITEMS & CATEGORIES POLICIES
 -- Anyone can view available menu items; Admins can manage all menu items
@@ -348,21 +420,171 @@ CREATE POLICY "Create order items" ON public.order_items
   FOR INSERT WITH CHECK (true);
 
 -- 5. RIDERS POLICIES
-CREATE POLICY "Staff can view riders" ON public.riders
+CREATE POLICY "Riders select policy" ON public.riders
   FOR SELECT USING (true);
 
-CREATE POLICY "Admins can manage riders" ON public.riders
-  FOR ALL USING (public.current_user_role() = 'admin');
+CREATE POLICY "Riders insert policy" ON public.riders
+  FOR INSERT WITH CHECK (
+    public.is_admin() OR
+    auth.role() = 'service_role'
+  );
 
-CREATE POLICY "Riders can update own availability" ON public.riders
-  FOR UPDATE USING (profile_id = auth.uid());
+CREATE POLICY "Riders update policy" ON public.riders
+  FOR UPDATE USING (
+    public.is_admin() OR
+    profile_id = auth.uid() OR
+    auth.role() = 'service_role'
+  )
+  WITH CHECK (
+    public.is_admin() OR
+    profile_id = auth.uid() OR
+    auth.role() = 'service_role'
+  );
+
+CREATE POLICY "Riders delete policy" ON public.riders
+  FOR DELETE USING (
+    public.is_admin() OR
+    auth.role() = 'service_role'
+  );
 
 -- 6. SALES REPS POLICIES
-CREATE POLICY "Staff can view sales reps" ON public.sales_reps
-  FOR SELECT USING (public.current_user_role() IN ('admin', 'sales_rep'));
+CREATE POLICY "Sales reps select policy" ON public.sales_reps
+  FOR SELECT USING (
+    public.is_admin() OR
+    public.current_user_role() IN ('admin', 'sales_rep') OR
+    profile_id = auth.uid() OR
+    auth.role() = 'service_role'
+  );
 
-CREATE POLICY "Admins can manage sales reps" ON public.sales_reps
-  FOR ALL USING (public.current_user_role() = 'admin');
+CREATE POLICY "Sales reps insert policy" ON public.sales_reps
+  FOR INSERT WITH CHECK (
+    public.is_admin() OR
+    auth.role() = 'service_role'
+  );
+
+CREATE POLICY "Sales reps update policy" ON public.sales_reps
+  FOR UPDATE USING (
+    public.is_admin() OR
+    profile_id = auth.uid() OR
+    auth.role() = 'service_role'
+  )
+  WITH CHECK (
+    public.is_admin() OR
+    profile_id = auth.uid() OR
+    auth.role() = 'service_role'
+  );
+
+CREATE POLICY "Sales reps delete policy" ON public.sales_reps
+  FOR DELETE USING (
+    public.is_admin() OR
+    auth.role() = 'service_role'
+  );
+
+-- ==============================================================================
+-- ATOMIC STAFF REGISTRATION RPC (SECURITY DEFINER)
+-- ==============================================================================
+CREATE OR REPLACE FUNCTION public.register_staff_profile(
+  p_user_id UUID,
+  p_name TEXT,
+  p_email TEXT,
+  p_phone TEXT,
+  p_role TEXT,
+  p_bike_number TEXT DEFAULT NULL,
+  p_license_number TEXT DEFAULT NULL,
+  p_address TEXT DEFAULT NULL,
+  p_role_number INT DEFAULT 1
+)
+RETURNS JSONB AS $$
+DECLARE
+  v_rider RECORD;
+  v_sales_rep RECORD;
+BEGIN
+  IF NOT public.is_admin() AND auth.role() <> 'service_role' THEN
+    RAISE EXCEPTION 'Forbidden: Only administrators can register staff members.';
+  END IF;
+
+  INSERT INTO public.profiles (id, full_name, email, phone, role, status, updated_at)
+  VALUES (p_user_id, p_name, p_email, p_phone, p_role, 'active', NOW())
+  ON CONFLICT (id) DO UPDATE SET
+    full_name = EXCLUDED.full_name,
+    email = EXCLUDED.email,
+    phone = EXCLUDED.phone,
+    role = EXCLUDED.role,
+    status = 'active',
+    updated_at = NOW();
+
+  IF p_role = 'rider' THEN
+    INSERT INTO public.riders (
+      profile_id, name, email, phone, bike_number, license_number,
+      availability, total_deliveries, rating, earnings, updated_at
+    )
+    VALUES (
+      p_user_id,
+      p_name,
+      p_email,
+      p_phone,
+      COALESCE(p_bike_number, 'BRY-' || (100 + p_role_number)::TEXT),
+      COALESCE(p_license_number, 'LIC-00' || p_role_number::TEXT),
+      'available',
+      0,
+      5.0,
+      0,
+      NOW()
+    )
+    ON CONFLICT (profile_id) DO UPDATE SET
+      name = EXCLUDED.name,
+      email = EXCLUDED.email,
+      phone = EXCLUDED.phone,
+      bike_number = COALESCE(EXCLUDED.bike_number, public.riders.bike_number),
+      license_number = COALESCE(EXCLUDED.license_number, public.riders.license_number),
+      updated_at = NOW()
+    RETURNING * INTO v_rider;
+
+    RETURN jsonb_build_object(
+      'success', true,
+      'user', jsonb_build_object('id', p_user_id, 'name', p_name, 'email', p_email, 'phone', p_phone, 'role', p_role),
+      'rider', row_to_json(v_rider)
+    );
+
+  ELSIF p_role = 'sales_rep' THEN
+    INSERT INTO public.sales_reps (
+      profile_id, name, email, phone, address, orders_handled, status, updated_at
+    )
+    VALUES (
+      p_user_id,
+      p_name,
+      p_email,
+      p_phone,
+      COALESCE(p_address, 'Lagos, Nigeria'),
+      0,
+      'active',
+      NOW()
+    )
+    ON CONFLICT (profile_id) DO UPDATE SET
+      name = EXCLUDED.name,
+      email = EXCLUDED.email,
+      phone = EXCLUDED.phone,
+      address = COALESCE(EXCLUDED.address, public.sales_reps.address),
+      updated_at = NOW()
+    RETURNING * INTO v_sales_rep;
+
+    RETURN jsonb_build_object(
+      'success', true,
+      'user', jsonb_build_object('id', p_user_id, 'name', p_name, 'email', p_email, 'phone', p_phone, 'role', p_role),
+      'sales_rep', row_to_json(v_sales_rep)
+    );
+  END IF;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'user', jsonb_build_object('id', p_user_id, 'name', p_name, 'email', p_email, 'phone', p_phone, 'role', p_role)
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+GRANT EXECUTE ON FUNCTION public.current_user_role() TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.is_admin() TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.register_staff_profile(UUID, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, INT) TO authenticated, service_role;
 
 -- 7. PAYMENTS POLICIES
 CREATE POLICY "View payments" ON public.payments
