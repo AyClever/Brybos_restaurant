@@ -8,7 +8,7 @@ interface StaffLoginPageProps {
 }
 
 export default function StaffLoginPage({ targetRole, onNavigate }: StaffLoginPageProps) {
-  const { dispatch, addNotification } = useApp();
+  const { state, dispatch, addNotification } = useApp();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -72,26 +72,40 @@ export default function StaffLoginPage({ targetRole, onNavigate }: StaffLoginPag
       return;
     }
 
-    // Role check verification
-    if (targetRole === 'admin' && user.role !== 'admin') {
+    const effectiveUser = { ...user };
+
+    // Role check verification with fallback to registered staff list in state
+    if (targetRole === 'admin' && effectiveUser.role !== 'admin') {
       setError('This account does not have Administrator privileges.');
       return;
     }
-    if (targetRole === 'sales_rep' && user.role !== 'sales_rep') {
-      setError('This account is not registered as a Sales Representative.');
-      return;
+    if (targetRole === 'sales_rep' && effectiveUser.role !== 'sales_rep') {
+      const isKnownRep = state.salesReps.some(r => r.email?.trim().toLowerCase() === effectiveUser.email?.trim().toLowerCase());
+      if (isKnownRep) {
+        effectiveUser.role = 'sales_rep';
+        authService.updateProfileRole(String(effectiveUser.id), 'sales_rep').catch(console.warn);
+      } else {
+        setError('This account is not registered as a Sales Representative.');
+        return;
+      }
     }
-    if (targetRole === 'rider' && user.role !== 'rider') {
-      setError('This account is not registered as a Dispatch Rider.');
-      return;
+    if (targetRole === 'rider' && effectiveUser.role !== 'rider') {
+      const isKnownRider = state.riders.some(r => r.email?.trim().toLowerCase() === effectiveUser.email?.trim().toLowerCase());
+      if (isKnownRider) {
+        effectiveUser.role = 'rider';
+        authService.updateProfileRole(String(effectiveUser.id), 'rider').catch(console.warn);
+      } else {
+        setError('This account is not registered as a Dispatch Rider.');
+        return;
+      }
     }
 
-    dispatch({ type: 'SET_USER', payload: user });
-    addNotification('success', `Welcome back, ${user.name}!`, `Authenticated as ${user.role?.replace('_', ' ')}`);
+    dispatch({ type: 'SET_USER', payload: effectiveUser });
+    addNotification('success', `Welcome back, ${effectiveUser.name}!`, `Authenticated as ${effectiveUser.role?.replace('_', ' ')}`);
 
-    if (user.role === 'admin') onNavigate('admin');
-    else if (user.role === 'sales_rep') onNavigate('salesrep');
-    else if (user.role === 'rider') onNavigate('rider');
+    if (effectiveUser.role === 'admin') onNavigate('admin');
+    else if (effectiveUser.role === 'sales_rep') onNavigate('salesrep');
+    else if (effectiveUser.role === 'rider') onNavigate('rider');
     else onNavigate('home');
   };
 

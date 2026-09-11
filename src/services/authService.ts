@@ -184,6 +184,26 @@ export const authService = {
   },
 
   /**
+   * Sends password reset email to a user.
+   */
+  async sendPasswordReset(email: string): Promise<{ success: boolean; error: string | null }> {
+    if (!isSupabaseConfigured) {
+      return { success: false, error: 'Supabase is not configured' };
+    }
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+        redirectTo: `${window.location.origin}/login`,
+      });
+      if (error) {
+        return { success: false, error: error.message };
+      }
+      return { success: true, error: null };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to send password reset' };
+    }
+  },
+
+  /**
    * Registers a customer account using Supabase Auth.
    * Strictly enforces 'customer' role for public registrations.
    */
@@ -320,6 +340,13 @@ export const authService = {
 
       if (error) {
         return { user: null, error: error.message };
+      }
+
+      if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+        return {
+          user: null,
+          error: `An account with ${email} is already registered in Supabase Auth. Please use a unique email or reset the password.`,
+        };
       }
 
       const newUserId = data.user?.id || `staff_${Date.now()}`;
@@ -478,6 +505,19 @@ export const authService = {
       return !error;
     } catch (err) {
       console.error('Error deleting customer:', err);
+      return false;
+    }
+  },
+
+  async updateProfileRole(userId: string, role: UserRole): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ role, updated_at: new Date().toISOString() })
+        .eq('id', userId);
+      return !error;
+    } catch {
       return false;
     }
   },

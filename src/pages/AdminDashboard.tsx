@@ -77,14 +77,17 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
   const [editMenuId, setEditMenuId] = useState<string | number | null>(null);
 
   // Rider form
-  const [riderForm, setRiderForm] = useState({ name: '', email: '', phone: '', bikeNumber: '', licenseNumber: '' });
+  const [riderForm, setRiderForm] = useState({ name: '', email: '', phone: '', bikeNumber: '', licenseNumber: '', password: '' });
+  const [showRiderPassword, setShowRiderPassword] = useState(false);
   const [editRiderId, setEditRiderId] = useState<string | number | null>(null);
   const [showRiderForm, setShowRiderForm] = useState(false);
 
   // Sales Rep form
-  const [repForm, setRepForm] = useState({ name: '', email: '', phone: '', address: '' });
+  const [repForm, setRepForm] = useState({ name: '', email: '', phone: '', address: '', password: '' });
+  const [showRepPassword, setShowRepPassword] = useState(false);
   const [editRepId, setEditRepId] = useState<string | number | null>(null);
   const [showRepForm, setShowRepForm] = useState(false);
+  const [submittingStaff, setSubmittingStaff] = useState(false);
 
   // Staff Credentials Modal
   const [createdStaffCredential, setCreatedStaffCredential] = useState<{
@@ -190,29 +193,49 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
     }
 
     const cleanName = riderForm.name.trim();
-    const riderEmail = riderForm.email.trim() || `${cleanName.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`;
+    const riderEmail = (riderForm.email.trim() || `${cleanName.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`).toLowerCase();
 
     if (editRiderId) {
       const existing = state.riders.find(r => r.id === editRiderId)!;
       dispatch({ type: 'UPDATE_RIDER', payload: { ...existing, ...riderForm, email: riderEmail } });
       addNotification('success', 'Rider Updated', `${cleanName}'s profile updated and saved to database`);
       setEditRiderId(null);
-    } else {
-      const roleNumber = state.riders.length + 1;
-      const generatedPassword = `riders${roleNumber}`;
+      setRiderForm({ name: '', email: '', phone: '', bikeNumber: '', licenseNumber: '', password: '' });
+      setShowRiderForm(false);
+      return;
+    }
 
-      // Register staff with email and generated password
-      await authService.registerStaff({
+    const roleNumber = state.riders.length + 1;
+    const finalPassword = riderForm.password.trim() || `riders${roleNumber}`;
+
+    if (finalPassword.length < 6) {
+      addNotification('warning', 'Weak Password', 'Password must be at least 6 characters for Supabase Auth.');
+      return;
+    }
+
+    setSubmittingStaff(true);
+    try {
+      // Register staff with email and chosen/generated password
+      const regRes = await authService.registerStaff({
         name: cleanName,
         email: riderEmail,
         phone: riderForm.phone,
         role: 'rider',
         roleNumber,
-        password: generatedPassword,
+        password: finalPassword,
+        bikeNumber: riderForm.bikeNumber || `BRY-${100 + roleNumber}`,
+        licenseNumber: riderForm.licenseNumber || `LIC-00${roleNumber}`,
       });
 
+      if (regRes.error) {
+        addNotification('error', 'Registration Failed', regRes.error);
+        setSubmittingStaff(false);
+        return;
+      }
+
+      const newUserId = regRes.user?.id || `rider_${Date.now()}`;
       const newRider: Rider = {
-        id: `rider_${Date.now()}`,
+        id: newUserId,
         name: cleanName,
         email: riderEmail,
         phone: riderForm.phone,
@@ -231,13 +254,17 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
         email: riderEmail,
         role: 'Dispatch Rider',
         roleNumber,
-        password: generatedPassword,
+        password: finalPassword,
         portalUrl: '/rider',
       });
-      addNotification('success', 'Rider Registered', `Login credentials created: ${riderEmail} / ${generatedPassword}`);
+      addNotification('success', 'Rider Registered', `Login credentials created: ${riderEmail} / ${finalPassword}`);
+      setRiderForm({ name: '', email: '', phone: '', bikeNumber: '', licenseNumber: '', password: '' });
+      setShowRiderForm(false);
+    } catch (err: any) {
+      addNotification('error', 'Registration Error', err?.message || 'Failed to register rider');
+    } finally {
+      setSubmittingStaff(false);
     }
-    setRiderForm({ name: '', email: '', phone: '', bikeNumber: '', licenseNumber: '' });
-    setShowRiderForm(false);
   };
 
   const handleAddRep = async () => {
@@ -247,29 +274,48 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
     }
 
     const cleanName = repForm.name.trim();
-    const repEmail = repForm.email.trim();
+    const repEmail = repForm.email.trim().toLowerCase();
 
     if (editRepId) {
       const existing = state.salesReps.find(r => r.id === editRepId)!;
       dispatch({ type: 'UPDATE_SALES_REP', payload: { ...existing, ...repForm, email: repEmail } });
       addNotification('success', 'Sales Rep Updated', `${cleanName}'s profile updated`);
       setEditRepId(null);
-    } else {
-      const roleNumber = state.salesReps.length + 1;
-      const generatedPassword = `salesrep${roleNumber}`;
+      setRepForm({ name: '', email: '', phone: '', address: '', password: '' });
+      setShowRepForm(false);
+      return;
+    }
 
-      // Register staff with email and generated password
-      await authService.registerStaff({
+    const roleNumber = state.salesReps.length + 1;
+    const finalPassword = repForm.password.trim() || `salesrep${roleNumber}`;
+
+    if (finalPassword.length < 6) {
+      addNotification('warning', 'Weak Password', 'Password must be at least 6 characters for Supabase Auth.');
+      return;
+    }
+
+    setSubmittingStaff(true);
+    try {
+      // Register staff with email and chosen/generated password
+      const regRes = await authService.registerStaff({
         name: cleanName,
         email: repEmail,
         phone: repForm.phone || '08000000000',
         role: 'sales_rep',
         roleNumber,
-        password: generatedPassword,
+        password: finalPassword,
+        address: repForm.address,
       });
 
+      if (regRes.error) {
+        addNotification('error', 'Registration Failed', regRes.error);
+        setSubmittingStaff(false);
+        return;
+      }
+
+      const newUserId = regRes.user?.id || `rep_${Date.now()}`;
       const newRep: SalesRep = {
-        id: `rep_${Date.now()}`,
+        id: newUserId,
         name: cleanName,
         email: repEmail,
         phone: repForm.phone || '08000000000',
@@ -285,13 +331,17 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
         email: repEmail,
         role: 'Sales Representative',
         roleNumber,
-        password: generatedPassword,
+        password: finalPassword,
         portalUrl: '/salesrep',
       });
-      addNotification('success', 'Sales Rep Registered', `Login credentials created: ${repEmail} / ${generatedPassword}`);
+      addNotification('success', 'Sales Rep Registered', `Login credentials created: ${repEmail} / ${finalPassword}`);
+      setRepForm({ name: '', email: '', phone: '', address: '', password: '' });
+      setShowRepForm(false);
+    } catch (err: any) {
+      addNotification('error', 'Registration Error', err?.message || 'Failed to register sales rep');
+    } finally {
+      setSubmittingStaff(false);
     }
-    setRepForm({ name: '', email: '', phone: '', address: '' });
-    setShowRepForm(false);
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -620,7 +670,7 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
                     Admin registers riders.
                   </p>
                 </div>
-                <button className="btn-gold" onClick={() => { setShowRiderForm(!showRiderForm); setEditRiderId(null); setRiderForm({ name: '', email: '', phone: '', bikeNumber: '', licenseNumber: '' }); }}>
+                <button className="btn-gold" onClick={() => { setShowRiderForm(!showRiderForm); setEditRiderId(null); setRiderForm({ name: '', email: '', phone: '', bikeNumber: '', licenseNumber: '', password: '' }); }}>
                   <i className="fas fa-plus" style={{ marginRight: '6px' }} /> Register Rider
                 </button>
               </div>
@@ -647,10 +697,46 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
                       <label className="form-label">Bike Number Plate</label>
                       <input type="text" className="form-control" value={riderForm.bikeNumber} onChange={e => setRiderForm({ ...riderForm, bikeNumber: e.target.value })} placeholder="ABJ-123-DP" />
                     </div>
-                    <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                    <div className="form-group">
                       <label className="form-label">Rider License Number</label>
                       <input type="text" className="form-control" value={riderForm.licenseNumber} onChange={e => setRiderForm({ ...riderForm, licenseNumber: e.target.value })} placeholder="LIC-003" />
                     </div>
+                    {!editRiderId && (
+                      <div className="form-group">
+                        <label className="form-label">
+                          Portal Password (Min 6 chars)
+                        </label>
+                        <div style={{ position: 'relative' }}>
+                          <input
+                            type={showRiderPassword ? 'text' : 'password'}
+                            className="form-control"
+                            value={riderForm.password}
+                            onChange={e => setRiderForm({ ...riderForm, password: e.target.value })}
+                            placeholder={`Default: riders${state.riders.length + 1}`}
+                            style={{ paddingRight: '45px' }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowRiderPassword(!showRiderPassword)}
+                            style={{
+                              position: 'absolute',
+                              right: '12px',
+                              top: '50%',
+                              transform: 'translateY(-50%)',
+                              background: 'transparent',
+                              border: 'none',
+                              color: 'rgba(255,255,255,0.5)',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <i className={`fas fa-${showRiderPassword ? 'eye-slash' : 'eye'}`} />
+                          </button>
+                        </div>
+                        <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', marginTop: '4px', display: 'block' }}>
+                          Leave blank to auto-use <code>riders{state.riders.length + 1}</code>
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Real-time Generated Credential Preview */}
@@ -669,26 +755,34 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
                       <div style={{ fontSize: '0.82rem' }}>
                         <div style={{ color: 'var(--gold)', fontWeight: 700 }}>
                           <i className="fas fa-key" style={{ marginRight: '6px' }} />
-                          Auto-Generated Credentials (Rider #{state.riders.length + 1}):
+                          Assigned Portal Credentials (Rider #{state.riders.length + 1}):
                         </div>
                         <div style={{ color: 'rgba(255,255,255,0.7)', marginTop: '3px' }}>
                           Login Email: <strong style={{ color: 'var(--white)' }}>{riderForm.email.trim() || `${(riderForm.name.trim().toLowerCase().replace(/[^a-z0-9]/g, '') || 'rider')}@gmail.com`}</strong>
                         </div>
                         <div style={{ color: 'rgba(255,255,255,0.7)' }}>
-                          Login Password: <strong style={{ color: 'var(--gold)', fontFamily: 'monospace' }}>riders{state.riders.length + 1}</strong>
+                          Login Password: <strong style={{ color: 'var(--gold)', fontFamily: 'monospace' }}>{riderForm.password.trim() || `riders${state.riders.length + 1}`}</strong>
                         </div>
                       </div>
                       <span className="badge badge-gold" style={{ fontSize: '0.75rem', padding: '4px 10px' }}>
-                        Portal: /rider
+                        Direct Login: /rider
                       </span>
                     </div>
                   )}
 
                   <div style={{ display: 'flex', gap: '1rem' }}>
-                    <button className="btn-gold" onClick={handleAddRider}>
-                      <i className="fas fa-save" style={{ marginRight: '6px' }} /> {editRiderId ? 'Update Rider' : 'Register Rider & Save Credentials'}
+                    <button className="btn-gold" onClick={handleAddRider} disabled={submittingStaff}>
+                      {submittingStaff ? (
+                        <>
+                          <i className="fas fa-spinner fa-spin" style={{ marginRight: '6px' }} /> Registering in Supabase...
+                        </>
+                      ) : (
+                        <>
+                          <i className="fas fa-save" style={{ marginRight: '6px' }} /> {editRiderId ? 'Update Rider' : 'Register Rider & Save Credentials'}
+                        </>
+                      )}
                     </button>
-                    <button className="btn-outline-gold" onClick={() => { setShowRiderForm(false); setEditRiderId(null); }}>Cancel</button>
+                    <button className="btn-outline-gold" onClick={() => { setShowRiderForm(false); setEditRiderId(null); }} disabled={submittingStaff}>Cancel</button>
                   </div>
                 </div>
               )}
@@ -723,18 +817,34 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
                         <div style={{ color: 'rgba(255,255,255,0.5)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           Email: <span style={{ color: 'var(--white)' }}>{riderEmail}</span>
                         </div>
-                        <div style={{ color: 'rgba(255,255,255,0.5)', marginTop: '2px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ color: 'var(--gold)', fontSize: '0.72rem' }}>🔒 Supabase Auth</span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              navigator.clipboard.writeText(`Email: ${riderEmail}\nPortal: /rider`);
-                              addNotification('info', 'Details Copied', `Copied login email for ${rider.name}`);
-                            }}
-                            style={{ background: 'none', border: 'none', color: 'var(--gold)', cursor: 'pointer', fontSize: '0.72rem', padding: 0 }}
-                          >
-                            📋 Copy Email
-                          </button>
+                        <div style={{ color: 'rgba(255,255,255,0.5)', marginTop: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.72rem', fontFamily: 'monospace' }}>Portal: /rider</span>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(`Email: ${riderEmail}\nPortal: /rider`);
+                                addNotification('info', 'Details Copied', `Copied login email for ${rider.name}`);
+                              }}
+                              style={{ background: 'none', border: 'none', color: 'var(--gold)', cursor: 'pointer', fontSize: '0.72rem', padding: 0 }}
+                            >
+                              📋 Copy
+                            </button>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const res = await authService.sendPasswordReset(riderEmail);
+                                if (res.success) {
+                                  addNotification('success', 'Reset Sent', `Password reset email sent to ${riderEmail}`);
+                                } else {
+                                  addNotification('warning', 'Reset Notice', res.error || 'Failed to send reset link');
+                                }
+                              }}
+                              style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: '0.72rem', padding: 0 }}
+                            >
+                              🔑 Reset
+                            </button>
+                          </div>
                         </div>
                       </div>
 
@@ -772,6 +882,7 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
                               phone: rider.phone,
                               bikeNumber: rider.bikeNumber,
                               licenseNumber: rider.licenseNumber,
+                              password: '',
                             });
                           }}>
                           Edit
@@ -811,7 +922,7 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
                     Admin registers sales reps.
                   </p>
                 </div>
-                <button className="btn-gold" onClick={() => { setShowRepForm(!showRepForm); setEditRepId(null); setRepForm({ name: '', email: '', phone: '', address: '' }); }}>
+                <button className="btn-gold" onClick={() => { setShowRepForm(!showRepForm); setEditRepId(null); setRepForm({ name: '', email: '', phone: '', address: '', password: '' }); }}>
                   <i className="fas fa-plus" style={{ marginRight: '6px' }} /> Register Sales Rep
                 </button>
               </div>
@@ -838,6 +949,42 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
                       <label className="form-label">Office / Branch Address</label>
                       <input type="text" className="form-control" value={repForm.address} onChange={e => setRepForm({ ...repForm, address: e.target.value })} placeholder="Lagos, Nigeria" />
                     </div>
+                    {!editRepId && (
+                      <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                        <label className="form-label">
+                          Portal Password (Min 6 chars)
+                        </label>
+                        <div style={{ position: 'relative' }}>
+                          <input
+                            type={showRepPassword ? 'text' : 'password'}
+                            className="form-control"
+                            value={repForm.password}
+                            onChange={e => setRepForm({ ...repForm, password: e.target.value })}
+                            placeholder={`Default: salesrep${state.salesReps.length + 1}`}
+                            style={{ paddingRight: '45px' }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowRepPassword(!showRepPassword)}
+                            style={{
+                              position: 'absolute',
+                              right: '12px',
+                              top: '50%',
+                              transform: 'translateY(-50%)',
+                              background: 'transparent',
+                              border: 'none',
+                              color: 'rgba(255,255,255,0.5)',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <i className={`fas fa-${showRepPassword ? 'eye-slash' : 'eye'}`} />
+                          </button>
+                        </div>
+                        <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', marginTop: '4px', display: 'block' }}>
+                          Leave blank to auto-use <code>salesrep{state.salesReps.length + 1}</code>
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Real-time Generated Credential Preview */}
@@ -856,26 +1003,34 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
                       <div style={{ fontSize: '0.82rem' }}>
                         <div style={{ color: 'var(--gold)', fontWeight: 700 }}>
                           <i className="fas fa-key" style={{ marginRight: '6px' }} />
-                          Auto-Generated Credentials (Sales Rep #{state.salesReps.length + 1}):
+                          Assigned Portal Credentials (Sales Rep #{state.salesReps.length + 1}):
                         </div>
                         <div style={{ color: 'rgba(255,255,255,0.7)', marginTop: '3px' }}>
                           Login Gmail: <strong style={{ color: 'var(--white)' }}>{repForm.email.trim() || 'rep@gmail.com'}</strong>
                         </div>
                         <div style={{ color: 'rgba(255,255,255,0.7)' }}>
-                          Login Password: <strong style={{ color: 'var(--gold)', fontFamily: 'monospace' }}>salesrep{state.salesReps.length + 1}</strong>
+                          Login Password: <strong style={{ color: 'var(--gold)', fontFamily: 'monospace' }}>{repForm.password.trim() || `salesrep${state.salesReps.length + 1}`}</strong>
                         </div>
                       </div>
                       <span className="badge badge-gold" style={{ fontSize: '0.75rem', padding: '4px 10px' }}>
-                        Portal: /salesrep
+                        Direct Login: /salesrep
                       </span>
                     </div>
                   )}
 
                   <div style={{ display: 'flex', gap: '1rem' }}>
-                    <button className="btn-gold" onClick={handleAddRep}>
-                      <i className="fas fa-save" style={{ marginRight: '6px' }} /> {editRepId ? 'Update Rep' : 'Register Rep & Save Credentials'}
+                    <button className="btn-gold" onClick={handleAddRep} disabled={submittingStaff}>
+                      {submittingStaff ? (
+                        <>
+                          <i className="fas fa-spinner fa-spin" style={{ marginRight: '6px' }} /> Registering in Supabase...
+                        </>
+                      ) : (
+                        <>
+                          <i className="fas fa-save" style={{ marginRight: '6px' }} /> {editRepId ? 'Update Rep' : 'Register Rep & Save Credentials'}
+                        </>
+                      )}
                     </button>
-                    <button className="btn-outline-gold" onClick={() => { setShowRepForm(false); setEditRepId(null); }}>Cancel</button>
+                    <button className="btn-outline-gold" onClick={() => { setShowRepForm(false); setEditRepId(null); }} disabled={submittingStaff}>Cancel</button>
                   </div>
                 </div>
               )}
@@ -886,7 +1041,7 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
                     <tr>
                       <th>Name</th>
                       <th>Email</th>
-                      <th>Security</th>
+                      <th>Portal Login</th>
                       <th>Phone</th>
                       <th>Orders Handled</th>
                       <th>Status</th>
@@ -913,19 +1068,34 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
                           </td>
                           <td>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <span style={{ color: 'var(--gold)', fontSize: '0.78rem', background: 'rgba(200,155,60,0.1)', padding: '2px 8px', borderRadius: '4px', border: '1px solid rgba(200,155,60,0.2)' }}>
-                                🔒 Supabase Auth
+                              <span style={{ color: 'var(--white)', fontSize: '0.75rem', background: 'rgba(255,255,255,0.08)', padding: '2px 8px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.12)', fontFamily: 'monospace' }}>
+                                /salesrep
                               </span>
                               <button
                                 type="button"
                                 onClick={() => {
                                   navigator.clipboard.writeText(`Email: ${rep.email}\nPortal: /salesrep`);
-                                  addNotification('info', 'Details Copied', `Copied login email for ${rep.name}`);
+                                  addNotification('info', 'Login Details Copied', `Copied login info for ${rep.name}`);
                                 }}
-                                title="Copy login email"
-                                style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: '0.75rem' }}
+                                title="Copy portal link & email"
+                                style={{ background: 'none', border: 'none', color: 'var(--gold)', cursor: 'pointer', fontSize: '0.75rem' }}
                               >
                                 📋
+                              </button>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const res = await authService.sendPasswordReset(rep.email);
+                                  if (res.success) {
+                                    addNotification('success', 'Reset Sent', `Password reset email sent to ${rep.email}`);
+                                  } else {
+                                    addNotification('warning', 'Reset Notice', res.error || 'Failed to send reset link');
+                                  }
+                                }}
+                                title="Send password reset link to staff email"
+                                style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: '0.72rem', padding: '1px 4px' }}
+                              >
+                                🔑 Reset
                               </button>
                             </div>
                           </td>
@@ -938,7 +1108,7 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
                                 onClick={() => {
                                   setShowRepForm(true);
                                   setEditRepId(rep.id);
-                                  setRepForm({ name: rep.name, email: rep.email, phone: rep.phone, address: rep.address });
+                                  setRepForm({ name: rep.name, email: rep.email, phone: rep.phone, address: rep.address, password: '' });
                                 }}>
                                 Edit
                               </button>
@@ -1523,11 +1693,11 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '10px' }}>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
               <button
                 type="button"
                 className="btn-gold"
-                style={{ flex: 1, padding: '10px', fontSize: '0.88rem' }}
+                style={{ flex: 1, minWidth: '150px', padding: '10px', fontSize: '0.88rem' }}
                 onClick={() => {
                   const text = `BRYBOS Staff Credentials\nRole: ${createdStaffCredential.role} #${createdStaffCredential.roleNumber}\nName: ${createdStaffCredential.name}\nLogin Email: ${createdStaffCredential.email}\nPassword: ${createdStaffCredential.password}\nPortal: ${createdStaffCredential.portalUrl}`;
                   navigator.clipboard.writeText(text);
@@ -1537,6 +1707,17 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (p: string)
                 }}
               >
                 {copiedKey ? '✅ Copied to Clipboard!' : '📋 Copy Credentials'}
+              </button>
+              <button
+                type="button"
+                className="btn-outline-gold"
+                style={{ padding: '10px 14px', fontSize: '0.88rem' }}
+                onClick={() => {
+                  window.open(createdStaffCredential.portalUrl, '_blank');
+                }}
+                title="Open login portal in a new tab"
+              >
+                <i className="fas fa-external-link-alt" style={{ marginRight: '6px' }} /> Launch Portal
               </button>
               <button
                 type="button"
